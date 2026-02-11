@@ -93,7 +93,7 @@ def main():
 
 def show_product_reconciliation(source_name="Ekofisk"):
     """Display Product reconciliation view"""
-    st.title(f"📊 {source_name} Product Reconciliation - JEEVES vs CT vs STIBO")
+    st.title(f"{source_name} Product Reconciliation - JEEVES vs CT vs STIBO")
     st.markdown("---")
     
     # Load data automatically from repo
