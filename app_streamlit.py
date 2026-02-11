@@ -226,30 +226,27 @@ def show_product_reconciliation():
             col_left, col_right = st.columns(2)
         
         with col_left:
-            # Distribution chart
+            # Distribution chart - use filtered data but ensure correct calculations
             filtered_range_filled = filtered_range.fillna({'CT': '', 'JEEVES': '', 'STIBO': ''})
+            
+            # Count presence for each product
+            presence_count = (
+                (filtered_range_filled["CT"] == "X").astype(int) + 
+                (filtered_range_filled["JEEVES"] == "X").astype(int) + 
+                (filtered_range_filled["STIBO"] == "X").astype(int)
+            )
+            
             status_counts = {
-                "✅ In all 3": len(filtered_range_filled[
-                    (filtered_range_filled["CT"] == "X") & 
-                    (filtered_range_filled["JEEVES"] == "X") & 
-                    (filtered_range_filled["STIBO"] == "X")
-                ]),
-                "⚠️ In 2": len(filtered_range_filled[
-                    ((filtered_range_filled["CT"] == "X").astype(int) + 
-                     (filtered_range_filled["JEEVES"] == "X").astype(int) + 
-                     (filtered_range_filled["STIBO"] == "X").astype(int)) == 2
-                ]),
-                "⚠️ In 1": len(filtered_range_filled[
-                    ((filtered_range_filled["CT"] == "X").astype(int) + 
-                     (filtered_range_filled["JEEVES"] == "X").astype(int) + 
-                     (filtered_range_filled["STIBO"] == "X").astype(int)) == 1
-                ]),
-                "❌ In none": len(filtered_range_filled[
-                    (filtered_range_filled["CT"] != "X") & 
-                    (filtered_range_filled["JEEVES"] != "X") & 
-                    (filtered_range_filled["STIBO"] != "X")
-                ])
+                "✅ In all 3": len(filtered_range_filled[presence_count == 3]),
+                "⚠️ In 2": len(filtered_range_filled[presence_count == 2]),
+                "⚠️ In 1": len(filtered_range_filled[presence_count == 1]),
+                "❌ In none": len(filtered_range_filled[presence_count == 0])
             }
+            
+            # Verify sum equals total
+            total_calculated = sum(status_counts.values())
+            if total_calculated != len(filtered_range_filled):
+                st.warning(f"⚠️ Calculation mismatch: {total_calculated} vs {len(filtered_range_filled)}")
             
             fig_pie = px.pie(
                 values=list(status_counts.values()),
