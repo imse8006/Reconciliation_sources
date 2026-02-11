@@ -256,9 +256,9 @@ def show_product_reconciliation():
         
         st.info(f"📊 {len(filtered_range)} products displayed out of {total_products} total")
         
-        # Detailed visualizations (below the quick overview)
-        st.subheader("📊 Detailed Analysis")
-        col_left, col_right = st.columns(2)
+        # Detailed visualizations (below the quick overview) - Collapsible
+        with st.expander("📊 Detailed Analysis", expanded=False):
+            col_left, col_right = st.columns(2)
         
         with col_left:
             # Distribution chart
@@ -320,7 +320,7 @@ def show_product_reconciliation():
             )
             st.plotly_chart(fig_bar, use_container_width=True, key="bar_range")
         
-        # Data table
+        # Filters
         st.subheader("Detailed Data")
         
         # Sort by Absent_from descending: non-empty values first (products missing from sources)
