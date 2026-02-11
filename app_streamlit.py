@@ -308,14 +308,16 @@ def main():
         # Data table
         st.subheader("Detailed Data")
         
-        # Sort by Absent_from: non-empty values first (products missing from sources)
+        # Sort by Absent_from descending: non-empty values first (products missing from sources)
         filtered_range_sorted = filtered_range.copy()
-        filtered_range_sorted['_sort_key'] = filtered_range_sorted['Absent_from'].apply(
-            lambda x: 0 if x and str(x).strip() else 1
-        )
+        # Convert to string and handle NaN/None as empty string for consistent sorting
+        filtered_range_sorted['Absent_from'] = filtered_range_sorted['Absent_from'].astype(str).replace('nan', '').replace('None', '')
+        # Sort descending: non-empty values will be at the top
         filtered_range_sorted = filtered_range_sorted.sort_values(
-            by=['_sort_key', 'Absent_from']
-        ).drop(columns=['_sort_key'])
+            by='Absent_from',
+            ascending=False,
+            na_position='last'
+        )
         
         # Display 705 rows
         num_rows = 705
