@@ -30,6 +30,15 @@ def load_reconciliation_file(file_path):
         st.error(f"Error loading file: {e}")
         return None
 
+@st.cache_data
+def find_latest_reconciliation_file():
+    """Find the latest Range Reconciliation file in the repo"""
+    range_files = list(Path(".").glob("Range_Reconciliation_*.xlsx"))
+    if range_files:
+        latest_file = max(range_files, key=lambda x: x.stat().st_mtime)
+        return latest_file, load_reconciliation_file(latest_file)
+    return None, None
+
 def run_reconciliation_from_upload(jeves_file, ct_file, stibo_file):
     """Run reconciliation script with uploaded files and return DataFrame directly"""
     import reconcile_products as rp
@@ -127,28 +136,27 @@ def main():
         
         st.markdown("---")
         
-        # Option 3: Load from local file (if exists)
-        st.subheader("📁 Local File")
-        range_files = list(Path(".").glob("Range_Reconciliation_*.xlsx"))
-        if range_files:
-            latest_file = max(range_files, key=lambda x: x.stat().st_mtime)
-            st.caption(f"Latest: {latest_file.name}")
-            if st.button("📂 Load Latest Local File", use_container_width=True):
-                df = load_reconciliation_file(latest_file)
+        # Option 3: Load from repo/local file (if exists)
+        st.subheader("📁 Repository File")
+        repo_file, _ = find_latest_reconciliation_file()
+        if repo_file:
+            st.caption(f"Available: {repo_file.name}")
+            if st.button("📂 Load from Repository", use_container_width=True):
+                df = load_reconciliation_file(repo_file)
                 if df is not None:
                     st.session_state['local_df'] = df
-                    st.session_state['local_file_name'] = latest_file.name
+                    st.session_state['local_file_name'] = repo_file.name
                     st.success("File loaded!")
                     st.cache_data.clear()
                     st.rerun()
         else:
-            st.caption("No local file found")
+            st.caption("No file in repository")
     
     # Determine which data source to use
     range_df = None
     source_info = None
     
-    # Priority: 1) Uploaded file, 2) Generated from upload, 3) Local file
+    # Priority: 1) Uploaded file, 2) Generated from upload, 3) Local file, 4) Repo file
     if 'uploaded_df' in st.session_state:
         range_df = st.session_state['uploaded_df']
         source_info = f"Uploaded: {st.session_state.get('uploaded_file_name', 'Unknown')}"
@@ -159,12 +167,11 @@ def main():
         range_df = st.session_state['local_df']
         source_info = f"Local: {st.session_state.get('local_file_name', 'Unknown')}"
     else:
-        # Try to load from local file automatically
-        range_files = list(Path(".").glob("Range_Reconciliation_*.xlsx"))
-        if range_files:
-            latest_file = max(range_files, key=lambda x: x.stat().st_mtime)
-            range_df = load_reconciliation_file(latest_file)
-            source_info = f"Auto-loaded: {latest_file.name}"
+        # Try to load from repo file automatically
+        repo_file, repo_df = find_latest_reconciliation_file()
+        if repo_df is not None and repo_file:
+            range_df = repo_df
+            source_info = f"From repo: {repo_file.name}"
     
     if range_df is None:
         st.warning("⚠️ No reconciliation data available")
