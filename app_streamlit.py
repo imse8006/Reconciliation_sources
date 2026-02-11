@@ -104,21 +104,129 @@ def show_product_reconciliation():
         st.header("Range Reconciliation")
         st.markdown("List of all products with their presence in CT, JEEVES and STIBO")
         
-        # Statistics
-        col1, col2, col3, col4 = st.columns(4)
+        # Calculate key metrics
         total_products = len(range_pd)
         ct_count = len(range_pd[range_pd["CT"] == "X"])
         jeves_count = len(range_pd[range_pd["JEEVES"] == "X"])
         stibo_count = len(range_pd[range_pd["STIBO"] == "X"])
+        all_three = len(range_pd[
+            (range_pd["CT"] == "X") & 
+            (range_pd["JEEVES"] == "X") & 
+            (range_pd["STIBO"] == "X")
+        ])
+        problems_count = total_products - all_three
+        
+        # Visual Alert Banner for Problems
+        if problems_count > 0:
+            st.error(f"⚠️ **{problems_count} products have issues** (not present in all 3 sources)")
+        else:
+            st.success("✅ **All products are present in all 3 sources**")
+        
+        st.markdown("---")
+        
+        # Main visual metrics - Large and clear
+        col1, col2, col3, col4, col5 = st.columns(5)
         
         with col1:
             st.metric("Total products", f"{total_products:,}")
         with col2:
-            st.metric("In CT", f"{ct_count:,}")
+            st.metric("✅ In all 3 sources", f"{all_three:,}", 
+                     delta=f"{all_three/total_products*100:.1f}%" if total_products > 0 else "0%",
+                     delta_color="normal")
         with col3:
-            st.metric("In JEEVES", f"{jeves_count:,}")
+            st.metric("⚠️ With issues", f"{problems_count:,}",
+                     delta=f"{problems_count/total_products*100:.1f}%" if total_products > 0 else "0%",
+                     delta_color="inverse")
         with col4:
-            st.metric("In STIBO", f"{stibo_count:,}")
+            missing_ct = total_products - ct_count
+            st.metric("Missing from CT", f"{missing_ct:,}", 
+                     delta=f"-{missing_ct}" if missing_ct > 0 else None,
+                     delta_color="inverse" if missing_ct > 0 else "off")
+        with col5:
+            missing_jeves = total_products - jeves_count
+            missing_stibo = total_products - stibo_count
+            st.metric("Missing from JEEVES/STIBO", f"{missing_jeves}/{missing_stibo}", 
+                     delta=f"-{missing_jeves}/-{missing_stibo}" if (missing_jeves > 0 or missing_stibo > 0) else None,
+                     delta_color="inverse" if (missing_jeves > 0 or missing_stibo > 0) else "off")
+        
+        st.markdown("---")
+        
+        # Quick breakdown visual
+        col_breakdown1, col_breakdown2 = st.columns(2)
+        
+        with col_breakdown1:
+            st.subheader("📊 Quick Status Breakdown")
+            # Fill NaN for consistent comparison
+            range_pd_filled = range_pd.fillna({'CT': '', 'JEEVES': '', 'STIBO': ''})
+            
+            breakdown_data = {
+                "✅ In all 3 sources": all_three,
+                "⚠️ In 2 sources only": len(range_pd_filled[
+                    ((range_pd_filled["CT"] == "X").astype(int) + 
+                     (range_pd_filled["JEEVES"] == "X").astype(int) + 
+                     (range_pd_filled["STIBO"] == "X").astype(int)) == 2
+                ]),
+                "⚠️ In 1 source only": len(range_pd_filled[
+                    ((range_pd_filled["CT"] == "X").astype(int) + 
+                     (range_pd_filled["JEEVES"] == "X").astype(int) + 
+                     (range_pd_filled["STIBO"] == "X").astype(int)) == 1
+                ]),
+                "❌ In 0 sources": len(range_pd_filled[
+                    (range_pd_filled["CT"] != "X") & 
+                    (range_pd_filled["JEEVES"] != "X") & 
+                    (range_pd_filled["STIBO"] != "X")
+                ])
+            }
+            
+            # Create a horizontal bar chart for quick visual
+            fig_breakdown = px.bar(
+                x=list(breakdown_data.values()),
+                y=list(breakdown_data.keys()),
+                orientation='h',
+                title="Products Status Overview",
+                labels={"x": "Number of products", "y": ""},
+                color=list(breakdown_data.keys()),
+                color_discrete_map={
+                    "✅ In all 3 sources": "#28a745",
+                    "⚠️ In 2 sources only": "#ffc107",
+                    "⚠️ In 1 source only": "#fd7e14",
+                    "❌ In 0 sources": "#dc3545"
+                }
+            )
+            fig_breakdown.update_layout(showlegend=False, height=250)
+            st.plotly_chart(fig_breakdown, use_container_width=True, key="breakdown_chart")
+        
+        with col_breakdown2:
+            st.subheader("📈 Source Coverage")
+            coverage_data = {
+                "CT": ct_count,
+                "JEEVES": jeves_count,
+                "STIBO": stibo_count
+            }
+            
+            # Bar chart with target line
+            fig_coverage = px.bar(
+                x=list(coverage_data.keys()),
+                y=list(coverage_data.values()),
+                title=f"Products per source (Target: {total_products})",
+                labels={"x": "Source", "y": "Number of products"},
+                color=list(coverage_data.keys()),
+                color_discrete_map={
+                    "CT": "#007bff",
+                    "JEEVES": "#28a745",
+                    "STIBO": "#17a2b8"
+                }
+            )
+            # Add target line
+            fig_coverage.add_hline(
+                y=total_products, 
+                line_dash="dash", 
+                line_color="red",
+                annotation_text=f"Target: {total_products}",
+                annotation_position="right"
+            )
+            fig_coverage.update_layout(showlegend=False, height=250)
+            st.plotly_chart(fig_coverage, use_container_width=True, key="coverage_chart")
         
         st.markdown("---")
         
@@ -151,53 +259,67 @@ def show_product_reconciliation():
         
         st.info(f"📊 {len(filtered_range)} products displayed out of {total_products} total")
         
-        # Visualizations
+        # Detailed visualizations (below the quick overview)
+        st.subheader("📊 Detailed Analysis")
         col_left, col_right = st.columns(2)
         
         with col_left:
             # Distribution chart
+            filtered_range_filled = filtered_range.fillna({'CT': '', 'JEEVES': '', 'STIBO': ''})
             status_counts = {
-                "In all 3": len(filtered_range[
-                    (filtered_range["CT"] == "X") & 
-                    (filtered_range["JEEVES"] == "X") & 
-                    (filtered_range["STIBO"] == "X")
+                "✅ In all 3": len(filtered_range_filled[
+                    (filtered_range_filled["CT"] == "X") & 
+                    (filtered_range_filled["JEEVES"] == "X") & 
+                    (filtered_range_filled["STIBO"] == "X")
                 ]),
-                "In 2": len(filtered_range[
-                    ((filtered_range["CT"] == "X").astype(int) + 
-                     (filtered_range["JEEVES"] == "X").astype(int) + 
-                     (filtered_range["STIBO"] == "X").astype(int)) == 2
+                "⚠️ In 2": len(filtered_range_filled[
+                    ((filtered_range_filled["CT"] == "X").astype(int) + 
+                     (filtered_range_filled["JEEVES"] == "X").astype(int) + 
+                     (filtered_range_filled["STIBO"] == "X").astype(int)) == 2
                 ]),
-                "In 1": len(filtered_range[
-                    ((filtered_range["CT"] == "X").astype(int) + 
-                     (filtered_range["JEEVES"] == "X").astype(int) + 
-                     (filtered_range["STIBO"] == "X").astype(int)) == 1
+                "⚠️ In 1": len(filtered_range_filled[
+                    ((filtered_range_filled["CT"] == "X").astype(int) + 
+                     (filtered_range_filled["JEEVES"] == "X").astype(int) + 
+                     (filtered_range_filled["STIBO"] == "X").astype(int)) == 1
                 ]),
-                "In none": len(filtered_range[
-                    (filtered_range["CT"] == "") & 
-                    (filtered_range["JEEVES"] == "") & 
-                    (filtered_range["STIBO"] == "")
+                "❌ In none": len(filtered_range_filled[
+                    (filtered_range_filled["CT"] != "X") & 
+                    (filtered_range_filled["JEEVES"] != "X") & 
+                    (filtered_range_filled["STIBO"] != "X")
                 ])
             }
             
             fig_pie = px.pie(
                 values=list(status_counts.values()),
                 names=list(status_counts.keys()),
-                title="Distribution by number of sources"
+                title="Distribution by number of sources",
+                color_discrete_map={
+                    "✅ In all 3": "#28a745",
+                    "⚠️ In 2": "#ffc107",
+                    "⚠️ In 1": "#fd7e14",
+                    "❌ In none": "#dc3545"
+                }
             )
             st.plotly_chart(fig_pie, use_container_width=True, key="pie_range")
         
         with col_right:
             # Bar chart by source
             source_counts = {
-                "CT": ct_count,
-                "JEEVES": jeves_count,
-                "STIBO": stibo_count
+                "CT": len(filtered_range[filtered_range["CT"] == "X"]),
+                "JEEVES": len(filtered_range[filtered_range["JEEVES"] == "X"]),
+                "STIBO": len(filtered_range[filtered_range["STIBO"] == "X"])
             }
             fig_bar = px.bar(
                 x=list(source_counts.keys()),
                 y=list(source_counts.values()),
-                title="Number of products by source",
-                labels={"x": "Source", "y": "Number of products"}
+                title="Number of products by source (filtered)",
+                labels={"x": "Source", "y": "Number of products"},
+                color=list(source_counts.keys()),
+                color_discrete_map={
+                    "CT": "#007bff",
+                    "JEEVES": "#28a745",
+                    "STIBO": "#17a2b8"
+                }
             )
             st.plotly_chart(fig_bar, use_container_width=True, key="bar_range")
         
