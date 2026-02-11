@@ -38,26 +38,32 @@ def main():
         st.header("📊 Navigation")
         st.markdown("---")
         
-        # Main level: Source selection
-        source = st.radio(
-            "Source",
+        # Legal Entity selection
+        st.markdown("### Legal Entity")
+        legal_entity = st.radio(
+            "",
             ["Ekofisk", "Fresh Direct", "Classic Drinks"],
             index=0,
-            key="source_selector"
+            key="legal_entity_selector",
+            label_visibility="collapsed"
         )
         
         st.markdown("---")
         
         # Domain selection
-        st.subheader(source)
+        st.markdown("### Domain")
         domain = st.radio(
-            "Domain",
+            "",
             ["Product", "Vendor", "Customer"],
             index=0,
-            key="domain_selector"
+            key="domain_selector",
+            label_visibility="collapsed"
         )
         
         st.markdown("---")
+        
+        # Current selection display
+        st.markdown(f"**📍 {legal_entity}** → **{domain}**")
     
     # Main content area
     if legal_entity == "Ekofisk":
