@@ -371,43 +371,43 @@ def show_product_reconciliation():
         
         st.markdown("---")
         
-        # Pie chart for presence
-        col_left, col_right = st.columns(2)
+        # Histogram for presence patterns
+        # Fill NaN for consistent comparison
+        range_pd_filled = range_pd.fillna({'CT': '', 'JEEVES': '', 'STIBO': ''})
         
-        with col_left:
-            # Count products by presence pattern
-            presence_patterns = {
-                "All 3": all_three,
-                "CT + JEEVES": len(range_pd[(range_pd["CT"] == "X") & (range_pd["JEEVES"] == "X") & (range_pd["STIBO"] == "")]),
-                "CT + STIBO": len(range_pd[(range_pd["CT"] == "X") & (range_pd["JEEVES"] == "") & (range_pd["STIBO"] == "X")]),
-                "JEEVES + STIBO": len(range_pd[(range_pd["CT"] == "") & (range_pd["JEEVES"] == "X") & (range_pd["STIBO"] == "X")]),
-                "CT only": len(range_pd[(range_pd["CT"] == "X") & (range_pd["JEEVES"] == "") & (range_pd["STIBO"] == "")]),
-                "JEEVES only": len(range_pd[(range_pd["CT"] == "") & (range_pd["JEEVES"] == "X") & (range_pd["STIBO"] == "")]),
-                "STIBO only": len(range_pd[(range_pd["CT"] == "") & (range_pd["JEEVES"] == "") & (range_pd["STIBO"] == "X")]),
-                "None": len(range_pd[(range_pd["CT"] == "") & (range_pd["JEEVES"] == "") & (range_pd["STIBO"] == "")])
-            }
-            
-            fig_pie = px.pie(
-                values=list(presence_patterns.values()),
-                names=list(presence_patterns.keys()),
-                title="Product distribution by source combination"
-            )
-            st.plotly_chart(fig_pie, use_container_width=True, key="pie_overview")
+        # Count products by presence pattern
+        presence_patterns = {
+            "All 3": all_three,
+            "CT + JEEVES": len(range_pd_filled[(range_pd_filled["CT"] == "X") & (range_pd_filled["JEEVES"] == "X") & (range_pd_filled["STIBO"] != "X")]),
+            "CT + STIBO": len(range_pd_filled[(range_pd_filled["CT"] == "X") & (range_pd_filled["JEEVES"] != "X") & (range_pd_filled["STIBO"] == "X")]),
+            "JEEVES + STIBO": len(range_pd_filled[(range_pd_filled["CT"] != "X") & (range_pd_filled["JEEVES"] == "X") & (range_pd_filled["STIBO"] == "X")]),
+            "CT only": len(range_pd_filled[(range_pd_filled["CT"] == "X") & (range_pd_filled["JEEVES"] != "X") & (range_pd_filled["STIBO"] != "X")]),
+            "JEEVES only": len(range_pd_filled[(range_pd_filled["CT"] != "X") & (range_pd_filled["JEEVES"] == "X") & (range_pd_filled["STIBO"] != "X")]),
+            "STIBO only": len(range_pd_filled[(range_pd_filled["CT"] != "X") & (range_pd_filled["JEEVES"] != "X") & (range_pd_filled["STIBO"] == "X")]),
+            "None": len(range_pd_filled[(range_pd_filled["CT"] != "X") & (range_pd_filled["JEEVES"] != "X") & (range_pd_filled["STIBO"] != "X")])
+        }
         
-        with col_right:
-            # Bar chart
-            source_counts = {
-                "CT": ct_count,
-                "JEEVES": jeves_count,
-                "STIBO": stibo_count
+        # Create horizontal bar chart (histogram)
+        fig_hist = px.bar(
+            x=list(presence_patterns.values()),
+            y=list(presence_patterns.keys()),
+            orientation='h',
+            title="Product distribution by source combination",
+            labels={"x": "Number of products", "y": "Source combination"},
+            color=list(presence_patterns.keys()),
+            color_discrete_map={
+                "All 3": "#28a745",
+                "CT + JEEVES": "#ffc107",
+                "CT + STIBO": "#ffc107",
+                "JEEVES + STIBO": "#ffc107",
+                "CT only": "#fd7e14",
+                "JEEVES only": "#fd7e14",
+                "STIBO only": "#fd7e14",
+                "None": "#dc3545"
             }
-            fig_bar = px.bar(
-                x=list(source_counts.keys()),
-                y=list(source_counts.values()),
-                title="Number of products by source",
-                labels={"x": "Source", "y": "Number of products"}
-            )
-            st.plotly_chart(fig_bar, use_container_width=True, key="bar_overview")
+        )
+        fig_hist.update_layout(showlegend=False, height=400)
+        st.plotly_chart(fig_hist, use_container_width=True, key="hist_overview")
     
 
 if __name__ == "__main__":
