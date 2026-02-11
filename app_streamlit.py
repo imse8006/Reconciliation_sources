@@ -41,16 +41,24 @@ def load_latest_analysis_files():
         st.error(f"Error loading file: {e}")
         return None, None
 
-def run_reconciliation(jeves_file, ct_file, stibo_file):
-    """Run reconciliation with uploaded files"""
+def run_reconciliation_from_upload(jeves_file, ct_file, stibo_file):
+    """Run reconciliation script with uploaded files and generate Range_Reconciliation file"""
     import reconcile_products as rp
+    import shutil
     
-    # Save uploaded files temporarily
+    # Create temporary directories matching expected structure
     temp_dir = Path(tempfile.mkdtemp())
+    jeves_dir = temp_dir / "JEEVES"
+    ct_dir = temp_dir / "CT"
+    stibo_dir = temp_dir / "STIBO"
+    jeves_dir.mkdir()
+    ct_dir.mkdir()
+    stibo_dir.mkdir()
     
-    jeves_path = temp_dir / "jeves.xlsx"
-    ct_path = temp_dir / "ct.xlsb"
-    stibo_path = temp_dir / "stibo.xlsx"
+    # Save files with expected names
+    jeves_path = jeves_dir / "RECONC Product Data 2026-02-04.xlsx"
+    ct_path = ct_dir / "P1 Data Cleansing - Product Ekofisk.xlsb"
+    stibo_path = stibo_dir / "extract_stibo_all_products.xlsx"
     
     # Save files
     with open(jeves_path, "wb") as f:
@@ -60,19 +68,33 @@ def run_reconciliation(jeves_file, ct_file, stibo_file):
     with open(stibo_path, "wb") as f:
         f.write(stibo_file.getvalue())
     
-    # Load data
-    jeves_df = rp.load_jeves_data(str(jeves_path))
-    ct_df = rp.load_ct_data(str(ct_path))
-    stibo_df = rp.load_stibo_data(str(stibo_path))
-    
-    # Create reconciliation
-    reconciliation = rp.create_range_reconciliation(jeves_df, ct_df, stibo_df)
-    
-    # Cleanup
-    import shutil
-    shutil.rmtree(temp_dir)
-    
-    return reconciliation
+    # Change to temp directory and run reconciliation
+    original_cwd = os.getcwd()
+    try:
+        os.chdir(temp_dir)
+        
+        # Load data
+        jeves_df = rp.load_jeves_data(str(jeves_path))
+        ct_df = rp.load_ct_data(str(ct_path))
+        stibo_df = rp.load_stibo_data(str(stibo_path))
+        
+        # Create reconciliation
+        reconciliation = rp.create_range_reconciliation(jeves_df, ct_df, stibo_df)
+        
+        # Generate output file
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = Path(f"Range_Reconciliation_{timestamp}.xlsx")
+        reconciliation.write_excel(output_file)
+        
+        # Copy file back to original directory
+        output_file_path = Path(original_cwd) / output_file.name
+        shutil.copy2(output_file, output_file_path)
+        
+        return output_file_path
+    finally:
+        os.chdir(original_cwd)
+        # Cleanup
+        shutil.rmtree(temp_dir)
 
 def main():
     # Sidebar for options
@@ -90,15 +112,14 @@ def main():
             if st.button("🔄 Run Reconciliation", use_container_width=True):
                 with st.spinner("Running reconciliation..."):
                     try:
-                        reconciliation_df = run_reconciliation(jeves_file, ct_file, stibo_file)
-                        # Save to session state
-                        st.session_state['reconciliation_df'] = reconciliation_df
-                        st.session_state['reconciliation_source'] = 'uploaded'
-                        st.success("Reconciliation completed!")
+                        output_file = run_reconciliation_from_upload(jeves_file, ct_file, stibo_file)
+                        st.success(f"Reconciliation completed! File: {output_file.name}")
                         st.cache_data.clear()
                         st.rerun()
                     except Exception as e:
                         st.error(f"Error: {str(e)}")
+                        import traceback
+                        st.code(traceback.format_exc())
         
         st.markdown("---")
         
@@ -116,35 +137,25 @@ def main():
             else:
                 st.error(f"Error: {result.stderr}")
     
-    # Load data
-    range_df = None
-    range_file = None
-    
-    # Check if we have reconciliation from upload
-    if 'reconciliation_df' in st.session_state:
-        range_df = st.session_state['reconciliation_df']
-        range_file = None
-    else:
-        # Try to load from file
-        range_df, range_file = load_latest_analysis_files()
+    # Load data - always use the Range_Reconciliation file
+    range_df, range_file = load_latest_analysis_files()
     
     if range_df is None:
         st.warning("⚠️ No Range Reconciliation file found. Please upload data files or run `reconcile_products.py`")
         st.info("""
         **Instructions:**
-        1. Upload the three data files using the sidebar
-        2. Click "Run Reconciliation" to generate the reconciliation
+        1. Upload the three data files using the sidebar (JEEVES .xlsx, CT .xlsb, STIBO .xlsx)
+        2. Click "Run Reconciliation" to generate the Range_Reconciliation file
         3. Or run `reconcile_products.py` locally to generate the file
         """)
         return
     
     # Display loaded file info
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### 📁 File Info")
+    st.sidebar.markdown("### 📁 Loaded File")
     if range_file:
         st.sidebar.caption(f"Range Recon: {Path(range_file).name}")
-    elif 'reconciliation_source' in st.session_state and st.session_state['reconciliation_source'] == 'uploaded':
-        st.sidebar.caption("Source: Uploaded files")
+        st.sidebar.caption(f"Modified: {datetime.fromtimestamp(range_file.stat().st_mtime).strftime('%Y-%m-%d %H:%M')}")
     
     # Convert to pandas for Streamlit (easier for display)
     range_pd = range_df.to_pandas()
