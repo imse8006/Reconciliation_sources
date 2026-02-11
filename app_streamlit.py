@@ -149,81 +149,46 @@ def show_product_reconciliation():
         st.markdown("---")
         
         # Quick breakdown visual
-        col_breakdown1, col_breakdown2 = st.columns(2)
+        st.subheader("📊 Quick Status Breakdown")
+        # Fill NaN for consistent comparison
+        range_pd_filled = range_pd.fillna({'CT': '', 'JEEVES': '', 'STIBO': ''})
         
-        with col_breakdown1:
-            st.subheader("📊 Quick Status Breakdown")
-            # Fill NaN for consistent comparison
-            range_pd_filled = range_pd.fillna({'CT': '', 'JEEVES': '', 'STIBO': ''})
-            
-            breakdown_data = {
-                "✅ In all 3 sources": all_three,
-                "⚠️ In 2 sources only": len(range_pd_filled[
-                    ((range_pd_filled["CT"] == "X").astype(int) + 
-                     (range_pd_filled["JEEVES"] == "X").astype(int) + 
-                     (range_pd_filled["STIBO"] == "X").astype(int)) == 2
-                ]),
-                "⚠️ In 1 source only": len(range_pd_filled[
-                    ((range_pd_filled["CT"] == "X").astype(int) + 
-                     (range_pd_filled["JEEVES"] == "X").astype(int) + 
-                     (range_pd_filled["STIBO"] == "X").astype(int)) == 1
-                ]),
-                "❌ In 0 sources": len(range_pd_filled[
-                    (range_pd_filled["CT"] != "X") & 
-                    (range_pd_filled["JEEVES"] != "X") & 
-                    (range_pd_filled["STIBO"] != "X")
-                ])
-            }
-            
-            # Create a horizontal bar chart for quick visual
-            fig_breakdown = px.bar(
-                x=list(breakdown_data.values()),
-                y=list(breakdown_data.keys()),
-                orientation='h',
-                title="Products Status Overview",
-                labels={"x": "Number of products", "y": ""},
-                color=list(breakdown_data.keys()),
-                color_discrete_map={
-                    "✅ In all 3 sources": "#28a745",
-                    "⚠️ In 2 sources only": "#ffc107",
-                    "⚠️ In 1 source only": "#fd7e14",
-                    "❌ In 0 sources": "#dc3545"
-                }
-            )
-            fig_breakdown.update_layout(showlegend=False, height=250)
-            st.plotly_chart(fig_breakdown, use_container_width=True, key="breakdown_chart")
+        breakdown_data = {
+            "✅ In all 3 sources": all_three,
+            "⚠️ In 2 sources only": len(range_pd_filled[
+                ((range_pd_filled["CT"] == "X").astype(int) + 
+                 (range_pd_filled["JEEVES"] == "X").astype(int) + 
+                 (range_pd_filled["STIBO"] == "X").astype(int)) == 2
+            ]),
+            "⚠️ In 1 source only": len(range_pd_filled[
+                ((range_pd_filled["CT"] == "X").astype(int) + 
+                 (range_pd_filled["JEEVES"] == "X").astype(int) + 
+                 (range_pd_filled["STIBO"] == "X").astype(int)) == 1
+            ]),
+            "❌ In 0 sources": len(range_pd_filled[
+                (range_pd_filled["CT"] != "X") & 
+                (range_pd_filled["JEEVES"] != "X") & 
+                (range_pd_filled["STIBO"] != "X")
+            ])
+        }
         
-        with col_breakdown2:
-            st.subheader("📈 Source Coverage")
-            coverage_data = {
-                "CT": ct_count,
-                "JEEVES": jeves_count,
-                "STIBO": stibo_count
+        # Create a horizontal bar chart for quick visual
+        fig_breakdown = px.bar(
+            x=list(breakdown_data.values()),
+            y=list(breakdown_data.keys()),
+            orientation='h',
+            title="Products Status Overview",
+            labels={"x": "Number of products", "y": ""},
+            color=list(breakdown_data.keys()),
+            color_discrete_map={
+                "✅ In all 3 sources": "#28a745",
+                "⚠️ In 2 sources only": "#ffc107",
+                "⚠️ In 1 source only": "#fd7e14",
+                "❌ In 0 sources": "#dc3545"
             }
-            
-            # Bar chart with target line
-            fig_coverage = px.bar(
-                x=list(coverage_data.keys()),
-                y=list(coverage_data.values()),
-                title=f"Products per source (Target: {total_products})",
-                labels={"x": "Source", "y": "Number of products"},
-                color=list(coverage_data.keys()),
-                color_discrete_map={
-                    "CT": "#007bff",
-                    "JEEVES": "#28a745",
-                    "STIBO": "#17a2b8"
-                }
-            )
-            # Add target line
-            fig_coverage.add_hline(
-                y=total_products, 
-                line_dash="dash", 
-                line_color="red",
-                annotation_text=f"Target: {total_products}",
-                annotation_position="right"
-            )
-            fig_coverage.update_layout(showlegend=False, height=250)
-            st.plotly_chart(fig_coverage, use_container_width=True, key="coverage_chart")
+        )
+        fig_breakdown.update_layout(showlegend=False, height=250)
+        st.plotly_chart(fig_breakdown, use_container_width=True, key="breakdown_chart")
         
         st.markdown("---")
         
