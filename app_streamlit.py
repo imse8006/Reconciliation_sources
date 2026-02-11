@@ -5,21 +5,14 @@ import plotly.express as px
 import plotly.graph_objects as go
 from pathlib import Path
 from datetime import datetime
-import tempfile
-import os
-import shutil
 
 # Page configuration
 st.set_page_config(
-    page_title="Ekofisk Product Reconciliation",
+    page_title="Ekofisk Reconciliation",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-# Main title
-st.title("📊 Ekofisk Product Reconciliation - JEEVES vs CT vs STIBO")
-st.markdown("---")
 
 @st.cache_data
 def load_reconciliation_file(file_path):
@@ -39,47 +32,42 @@ def find_latest_reconciliation_file():
         return latest_file, load_reconciliation_file(latest_file)
     return None, None
 
-def run_reconciliation_from_upload(jeves_file, ct_file, stibo_file):
-    """Run reconciliation script with uploaded files and return DataFrame directly"""
-    import reconcile_products as rp
-    
-    # Create temporary directories matching expected structure
-    temp_dir = Path(tempfile.mkdtemp())
-    jeves_dir = temp_dir / "JEEVES"
-    ct_dir = temp_dir / "CT"
-    stibo_dir = temp_dir / "STIBO"
-    jeves_dir.mkdir()
-    ct_dir.mkdir()
-    stibo_dir.mkdir()
-    
-    # Save files with expected names
-    jeves_path = jeves_dir / "RECONC Product Data 2026-02-04.xlsx"
-    ct_path = ct_dir / "P1 Data Cleansing - Product Ekofisk.xlsb"
-    stibo_path = stibo_dir / "extract_stibo_all_products.xlsx"
-    
-    # Save files
-    with open(jeves_path, "wb") as f:
-        f.write(jeves_file.getvalue())
-    with open(ct_path, "wb") as f:
-        f.write(ct_file.getvalue())
-    with open(stibo_path, "wb") as f:
-        f.write(stibo_file.getvalue())
-    
-    try:
-        # Load data
-        jeves_df = rp.load_jeves_data(str(jeves_path))
-        ct_df = rp.load_ct_data(str(ct_path))
-        stibo_df = rp.load_stibo_data(str(stibo_path))
-        
-        # Create reconciliation DataFrame directly
-        reconciliation_df = rp.create_range_reconciliation(jeves_df, ct_df, stibo_df)
-        
-        return reconciliation_df
-    finally:
-        # Cleanup
-        shutil.rmtree(temp_dir)
-
 def main():
+    # Navigation sidebar
+    with st.sidebar:
+        st.header("📊 Navigation")
+        st.markdown("---")
+        
+        # Main level: Ekofisk
+        st.subheader("Ekofisk")
+        
+        # Domain selection
+        domain = st.radio(
+            "Domain",
+            ["Product", "Vendor", "Customer"],
+            index=0,
+            key="domain_selector"
+        )
+        
+        st.markdown("---")
+        
+        # Display current selection
+        st.caption(f"📍 **Ekofisk > {domain}**")
+    
+    # Main content area
+    if domain == "Product":
+        show_product_reconciliation()
+    elif domain == "Vendor":
+        st.title("📊 Ekofisk Vendor Reconciliation")
+        st.info("🚧 Vendor reconciliation coming soon...")
+    elif domain == "Customer":
+        st.title("📊 Ekofisk Customer Reconciliation")
+        st.info("🚧 Customer reconciliation coming soon...")
+
+def show_product_reconciliation():
+    """Display Product reconciliation view"""
+    st.title("📊 Ekofisk Product Reconciliation - JEEVES vs CT vs STIBO")
+    st.markdown("---")
     # Sidebar for options
     with st.sidebar:
         st.header("⚙️ Options")
