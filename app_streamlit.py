@@ -1,4 +1,4 @@
-"""Application Streamlit pour visualiser les résultats de réconciliation"""
+"""Streamlit application to visualize reconciliation results"""
 import streamlit as st
 import polars as pl
 import plotly.express as px
@@ -6,23 +6,25 @@ import plotly.graph_objects as go
 from pathlib import Path
 import glob
 from datetime import datetime
+import tempfile
+import os
 
-# Configuration de la page
+# Page configuration
 st.set_page_config(
-    page_title="Réconciliation Produits Ekofisk",
+    page_title="Ekofisk Product Reconciliation",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Titre principal
-st.title("📊 Réconciliation Produits Ekofisk - JEEVES vs CT")
+# Main title
+st.title("📊 Ekofisk Product Reconciliation - JEEVES vs CT vs STIBO")
 st.markdown("---")
 
 @st.cache_data
 def load_latest_analysis_files():
-    """Charge le fichier Range Reconciliation le plus récent"""
-    # Chercher le fichier Range Reconciliation le plus récent (par date de modification)
+    """Load the most recent Range Reconciliation file"""
+    # Search for most recent Range Reconciliation file (by modification date)
     range_files = list(Path(".").glob("Range_Reconciliation_*.xlsx"))
     
     range_file = None
@@ -36,73 +38,134 @@ def load_latest_analysis_files():
         
         return range_df, range_file
     except Exception as e:
-        st.error(f"Erreur lors du chargement du fichier: {e}")
+        st.error(f"Error loading file: {e}")
         return None, None
 
+def run_reconciliation(jeves_file, ct_file, stibo_file):
+    """Run reconciliation with uploaded files"""
+    import reconcile_products as rp
+    
+    # Save uploaded files temporarily
+    temp_dir = Path(tempfile.mkdtemp())
+    
+    jeves_path = temp_dir / "jeves.xlsx"
+    ct_path = temp_dir / "ct.xlsb"
+    stibo_path = temp_dir / "stibo.xlsx"
+    
+    # Save files
+    with open(jeves_path, "wb") as f:
+        f.write(jeves_file.getvalue())
+    with open(ct_path, "wb") as f:
+        f.write(ct_file.getvalue())
+    with open(stibo_path, "wb") as f:
+        f.write(stibo_file.getvalue())
+    
+    # Load data
+    jeves_df = rp.load_jeves_data(str(jeves_path))
+    ct_df = rp.load_ct_data(str(ct_path))
+    stibo_df = rp.load_stibo_data(str(stibo_path))
+    
+    # Create reconciliation
+    reconciliation = rp.create_range_reconciliation(jeves_df, ct_df, stibo_df)
+    
+    # Cleanup
+    import shutil
+    shutil.rmtree(temp_dir)
+    
+    return reconciliation
+
 def main():
-    # Sidebar pour les options
+    # Sidebar for options
     with st.sidebar:
         st.header("⚙️ Options")
         st.markdown("---")
         
-        # Option pour régénérer les analyses
-        if st.button("🔄 Régénérer les analyses", use_container_width=True):
-            st.info("Exécution de la réconciliation...")
+        # File upload section
+        st.subheader("📤 Upload Data Files")
+        jeves_file = st.file_uploader("JEEVES File (.xlsx)", type=["xlsx"], key="jeves")
+        ct_file = st.file_uploader("CT File (.xlsb)", type=["xlsb"], key="ct")
+        stibo_file = st.file_uploader("STIBO File (.xlsx)", type=["xlsx"], key="stibo")
+        
+        if jeves_file and ct_file and stibo_file:
+            if st.button("🔄 Run Reconciliation", use_container_width=True):
+                with st.spinner("Running reconciliation..."):
+                    try:
+                        reconciliation_df = run_reconciliation(jeves_file, ct_file, stibo_file)
+                        # Save to session state
+                        st.session_state['reconciliation_df'] = reconciliation_df
+                        st.session_state['reconciliation_source'] = 'uploaded'
+                        st.success("Reconciliation completed!")
+                        st.cache_data.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {str(e)}")
+        
+        st.markdown("---")
+        
+        # Option to regenerate from local files
+        if st.button("🔄 Regenerate from Local Files", use_container_width=True):
+            st.info("Running reconciliation...")
             import subprocess
             import sys
             result = subprocess.run([sys.executable, "reconcile_products.py"], 
                                   capture_output=True, text=True)
             if result.returncode == 0:
-                st.success("Analyses régénérées avec succès!")
+                st.success("Reconciliation regenerated successfully!")
                 st.cache_data.clear()
+                st.rerun()
             else:
-                st.error(f"Erreur: {result.stderr}")
+                st.error(f"Error: {result.stderr}")
     
-    # Charger les données
-    range_df, range_file = load_latest_analysis_files()
+    # Load data
+    range_df = None
+    range_file = None
+    
+    # Check if we have reconciliation from upload
+    if 'reconciliation_df' in st.session_state:
+        range_df = st.session_state['reconciliation_df']
+        range_file = None
+    else:
+        # Try to load from file
+        range_df, range_file = load_latest_analysis_files()
     
     if range_df is None:
-        st.warning("⚠️ Aucun fichier Range Reconciliation trouvé. Veuillez d'abord exécuter `reconcile_products.py`")
-        if st.button("Exécuter la réconciliation maintenant"):
-            import subprocess
-            import sys
-            with st.spinner("Exécution en cours..."):
-                result = subprocess.run([sys.executable, "reconcile_products.py"], 
-                                      capture_output=True, text=True)
-                if result.returncode == 0:
-                    st.success("Réconciliation générée!")
-                    st.cache_data.clear()
-                    st.rerun()
-                else:
-                    st.error(f"Erreur: {result.stderr}")
+        st.warning("⚠️ No Range Reconciliation file found. Please upload data files or run `reconcile_products.py`")
+        st.info("""
+        **Instructions:**
+        1. Upload the three data files using the sidebar
+        2. Click "Run Reconciliation" to generate the reconciliation
+        3. Or run `reconcile_products.py` locally to generate the file
+        """)
         return
     
-    # Afficher le fichier chargé
+    # Display loaded file info
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### 📁 Fichier chargé")
+    st.sidebar.markdown("### 📁 File Info")
     if range_file:
         st.sidebar.caption(f"Range Recon: {Path(range_file).name}")
+    elif 'reconciliation_source' in st.session_state and st.session_state['reconciliation_source'] == 'uploaded':
+        st.sidebar.caption("Source: Uploaded files")
     
-    # Convertir en pandas pour Streamlit (plus facile pour l'affichage)
+    # Convert to pandas for Streamlit (easier for display)
     range_pd = range_df.to_pandas()
     
-    # Vérifier que les colonnes attendues existent
+    # Check that expected columns exist
     required_cols = ["ProductCode", "CT", "JEEVES", "STIBO", "Absent_from"]
     missing_cols = [col for col in required_cols if col not in range_pd.columns]
     
     if missing_cols:
-        st.error(f"Colonnes manquantes: {missing_cols}")
-        st.info(f"Colonnes disponibles: {list(range_pd.columns)}")
+        st.error(f"Missing columns: {missing_cols}")
+        st.info(f"Available columns: {list(range_pd.columns)}")
         return
     
-    # Onglets pour les différentes vues
-    tab_range, tab_overview = st.tabs(["✅ Range Reconciliation", "📈 Vue d'ensemble"])
+    # Tabs for different views
+    tab_range, tab_overview = st.tabs(["✅ Range Reconciliation", "📈 Overview"])
     
     with tab_range:
         st.header("✅ Range Reconciliation")
-        st.markdown("Liste de tous les produits avec leur présence dans CT, JEEVES et STIBO")
+        st.markdown("List of all products with their presence in CT, JEEVES and STIBO")
         
-        # Statistiques
+        # Statistics
         col1, col2, col3, col4 = st.columns(4)
         total_products = len(range_pd)
         ct_count = len(range_pd[range_pd["CT"] == "X"])
@@ -110,17 +173,17 @@ def main():
         stibo_count = len(range_pd[range_pd["STIBO"] == "X"])
         
         with col1:
-            st.metric("Total produits", f"{total_products:,}")
+            st.metric("Total products", f"{total_products:,}")
         with col2:
-            st.metric("Dans CT", f"{ct_count:,}")
+            st.metric("In CT", f"{ct_count:,}")
         with col3:
-            st.metric("Dans JEEVES", f"{jeves_count:,}")
+            st.metric("In JEEVES", f"{jeves_count:,}")
         with col4:
-            st.metric("Dans STIBO", f"{stibo_count:,}")
+            st.metric("In STIBO", f"{stibo_count:,}")
         
         st.markdown("---")
         
-        # Filtres
+        # Filters
         col1, col2, col3 = st.columns(3)
         with col1:
             filter_ct = st.selectbox("CT", ["All", "X Present", "Absent"], index=0)
@@ -129,10 +192,10 @@ def main():
         with col3:
             filter_stibo = st.selectbox("STIBO", ["All", "X Present", "Absent"], index=0)
         
-        # Recherche
-        search_term = st.text_input("🔍 Rechercher un produit (code)", "")
+        # Search
+        search_term = st.text_input("🔍 Search product (code)", "")
         
-        # Appliquer les filtres
+        # Apply filters
         filtered_range = range_pd.copy()
         
         if filter_ct != "All":
@@ -147,13 +210,13 @@ def main():
                 filtered_range["ProductCode"].astype(str).str.contains(search_term, case=False, na=False)
             ]
         
-        st.info(f"📊 {len(filtered_range)} produits affichés sur {total_products} au total")
+        st.info(f"📊 {len(filtered_range)} products displayed out of {total_products} total")
         
-        # Visualisations
+        # Visualizations
         col_left, col_right = st.columns(2)
         
         with col_left:
-            # Graphique de répartition
+            # Distribution chart
             status_counts = {
                 "In all 3": len(filtered_range[
                     (filtered_range["CT"] == "X") & 
@@ -180,15 +243,12 @@ def main():
             fig_pie = px.pie(
                 values=list(status_counts.values()),
                 names=list(status_counts.keys()),
-                title="Répartition par nombre de sources"
+                title="Distribution by number of sources"
             )
             st.plotly_chart(fig_pie, use_container_width=True)
         
         with col_right:
-            # Graphique en barres par source
-            ct_count = len(range_pd[range_pd["CT"] == "X"])
-            jeves_count = len(range_pd[range_pd["JEEVES"] == "X"])
-            stibo_count = len(range_pd[range_pd["STIBO"] == "X"])
+            # Bar chart by source
             source_counts = {
                 "CT": ct_count,
                 "JEEVES": jeves_count,
@@ -197,16 +257,16 @@ def main():
             fig_bar = px.bar(
                 x=list(source_counts.keys()),
                 y=list(source_counts.values()),
-                title="Nombre de produits par source",
-                labels={"x": "Source", "y": "Nombre de produits"}
+                title="Number of products by source",
+                labels={"x": "Source", "y": "Number of products"}
             )
             st.plotly_chart(fig_bar, use_container_width=True)
         
-        # Tableau de données
-        st.subheader("Données détaillées")
+        # Data table
+        st.subheader("Detailed Data")
         
-        # Options d'affichage
-        num_rows = st.slider("Nombre de lignes à afficher", 10, min(1000, len(filtered_range)), 100)
+        # Display options
+        num_rows = st.slider("Number of rows to display", 10, min(1000, len(filtered_range)), 100)
         
         st.dataframe(
             filtered_range[["ProductCode", "CT", "JEEVES", "STIBO", "Absent_from"]],
@@ -214,73 +274,80 @@ def main():
             height=400
         )
         
-        # Téléchargement
+        # Download
         csv_range = filtered_range.to_csv(index=False)
         st.download_button(
-            label="📥 Télécharger la Range Reconciliation (CSV)",
+            label="📥 Download Range Reconciliation (CSV)",
             data=csv_range,
             file_name=f"range_reconciliation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
             mime="text/csv"
         )
     
     with tab_overview:
-        st.header("Vue d'ensemble")
+        st.header("Overview")
         
-        # Métriques principales
+        # Main metrics
         col1, col2, col3, col4 = st.columns(4)
         
-        total_products = len(presence_pd)
-        jeves_only = len(presence_pd[presence_pd["Statut"] == "JEEVES uniquement"])
-        ct_only = len(presence_pd[presence_pd["Statut"] == "CT uniquement"])
-        both = len(presence_pd[presence_pd["Statut"] == "Les deux"])
+        total_products = len(range_pd)
+        ct_count = len(range_pd[range_pd["CT"] == "X"])
+        jeves_count = len(range_pd[range_pd["JEEVES"] == "X"])
+        stibo_count = len(range_pd[range_pd["STIBO"] == "X"])
+        all_three = len(range_pd[
+            (range_pd["CT"] == "X") & 
+            (range_pd["JEEVES"] == "X") & 
+            (range_pd["STIBO"] == "X")
+        ])
         
         with col1:
-            st.metric("Total produits uniques", f"{total_products:,}")
+            st.metric("Total unique products", f"{total_products:,}")
         with col2:
-            st.metric("Dans les deux sources", f"{both:,}", 
-                     delta=f"{both/total_products*100:.1f}%")
+            st.metric("In all 3 sources", f"{all_three:,}", 
+                     delta=f"{all_three/total_products*100:.1f}%" if total_products > 0 else "0%")
         with col3:
-            st.metric("JEEVES uniquement", f"{jeves_only:,}")
+            st.metric("In CT only", f"{len(range_pd[(range_pd['CT'] == 'X') & (range_pd['JEEVES'] == '') & (range_pd['STIBO'] == '')]):,}")
         with col4:
-            st.metric("CT uniquement", f"{ct_only:,}")
+            st.metric("In JEEVES only", f"{len(range_pd[(range_pd['CT'] == '') & (range_pd['JEEVES'] == 'X') & (range_pd['STIBO'] == '')]):,}")
         
         st.markdown("---")
         
-        # Graphique en camembert pour la présence
+        # Pie chart for presence
         col_left, col_right = st.columns(2)
         
         with col_left:
+            # Count products by presence pattern
+            presence_patterns = {
+                "All 3": all_three,
+                "CT + JEEVES": len(range_pd[(range_pd["CT"] == "X") & (range_pd["JEEVES"] == "X") & (range_pd["STIBO"] == "")]),
+                "CT + STIBO": len(range_pd[(range_pd["CT"] == "X") & (range_pd["JEEVES"] == "") & (range_pd["STIBO"] == "X")]),
+                "JEEVES + STIBO": len(range_pd[(range_pd["CT"] == "") & (range_pd["JEEVES"] == "X") & (range_pd["STIBO"] == "X")]),
+                "CT only": len(range_pd[(range_pd["CT"] == "X") & (range_pd["JEEVES"] == "") & (range_pd["STIBO"] == "")]),
+                "JEEVES only": len(range_pd[(range_pd["CT"] == "") & (range_pd["JEEVES"] == "X") & (range_pd["STIBO"] == "")]),
+                "STIBO only": len(range_pd[(range_pd["CT"] == "") & (range_pd["JEEVES"] == "") & (range_pd["STIBO"] == "X")]),
+                "None": len(range_pd[(range_pd["CT"] == "") & (range_pd["JEEVES"] == "") & (range_pd["STIBO"] == "")])
+            }
+            
             fig_pie = px.pie(
-                presence_pd,
-                names="Statut",
-                title="Répartition des produits par source",
-                color_discrete_map={
-                    "Les deux": "#2ecc71",
-                    "JEEVES uniquement": "#3498db",
-                    "CT uniquement": "#e74c3c"
-                }
+                values=list(presence_patterns.values()),
+                names=list(presence_patterns.keys()),
+                title="Product distribution by source combination"
             )
-            fig_pie.update_traces(textposition='inside', textinfo='percent+label')
             st.plotly_chart(fig_pie, use_container_width=True)
         
         with col_right:
-            # Graphique en barres
-            status_counts = presence_pd["Statut"].value_counts()
+            # Bar chart
+            source_counts = {
+                "CT": ct_count,
+                "JEEVES": jeves_count,
+                "STIBO": stibo_count
+            }
             fig_bar = px.bar(
-                x=status_counts.index,
-                y=status_counts.values,
-                title="Nombre de produits par statut",
-                labels={"x": "Statut", "y": "Nombre de produits"},
-                color=status_counts.index,
-                color_discrete_map={
-                    "Les deux": "#2ecc71",
-                    "JEEVES uniquement": "#3498db",
-                    "CT uniquement": "#e74c3c"
-                }
+                x=list(source_counts.keys()),
+                y=list(source_counts.values()),
+                title="Number of products by source",
+                labels={"x": "Source", "y": "Number of products"}
             )
-            fig_bar.update_layout(showlegend=False)
             st.plotly_chart(fig_bar, use_container_width=True)
-        
     
 
 if __name__ == "__main__":
