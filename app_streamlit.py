@@ -4,10 +4,10 @@ import polars as pl
 import plotly.express as px
 import plotly.graph_objects as go
 from pathlib import Path
-import glob
 from datetime import datetime
 import tempfile
 import os
+import shutil
 
 # Page configuration
 st.set_page_config(
@@ -22,29 +22,17 @@ st.title("📊 Ekofisk Product Reconciliation - JEEVES vs CT vs STIBO")
 st.markdown("---")
 
 @st.cache_data
-def load_latest_analysis_files():
-    """Load the most recent Range Reconciliation file"""
-    # Search for most recent Range Reconciliation file (by modification date)
-    range_files = list(Path(".").glob("Range_Reconciliation_*.xlsx"))
-    
-    range_file = None
-    if range_files:
-        range_file = max(range_files, key=lambda x: x.stat().st_mtime)
-    
+def load_reconciliation_file(file_path):
+    """Load Range Reconciliation Excel file"""
     try:
-        range_df = None
-        if range_file:
-            range_df = pl.read_excel(range_file)
-        
-        return range_df, range_file
+        return pl.read_excel(file_path)
     except Exception as e:
         st.error(f"Error loading file: {e}")
-        return None, None
+        return None
 
 def run_reconciliation_from_upload(jeves_file, ct_file, stibo_file):
-    """Run reconciliation script with uploaded files and generate Range_Reconciliation file"""
+    """Run reconciliation script with uploaded files and return DataFrame directly"""
     import reconcile_products as rp
-    import shutil
     
     # Create temporary directories matching expected structure
     temp_dir = Path(tempfile.mkdtemp())
@@ -68,31 +56,17 @@ def run_reconciliation_from_upload(jeves_file, ct_file, stibo_file):
     with open(stibo_path, "wb") as f:
         f.write(stibo_file.getvalue())
     
-    # Change to temp directory and run reconciliation
-    original_cwd = os.getcwd()
     try:
-        os.chdir(temp_dir)
-        
         # Load data
         jeves_df = rp.load_jeves_data(str(jeves_path))
         ct_df = rp.load_ct_data(str(ct_path))
         stibo_df = rp.load_stibo_data(str(stibo_path))
         
-        # Create reconciliation
-        reconciliation = rp.create_range_reconciliation(jeves_df, ct_df, stibo_df)
+        # Create reconciliation DataFrame directly
+        reconciliation_df = rp.create_range_reconciliation(jeves_df, ct_df, stibo_df)
         
-        # Generate output file
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file = Path(f"Range_Reconciliation_{timestamp}.xlsx")
-        reconciliation.write_excel(output_file)
-        
-        # Copy file back to original directory
-        output_file_path = Path(original_cwd) / output_file.name
-        shutil.copy2(output_file, output_file_path)
-        
-        return output_file_path
+        return reconciliation_df
     finally:
-        os.chdir(original_cwd)
         # Cleanup
         shutil.rmtree(temp_dir)
 
@@ -102,18 +76,48 @@ def main():
         st.header("⚙️ Options")
         st.markdown("---")
         
-        # File upload section
-        st.subheader("📤 Upload Data Files")
+        # Option 1: Upload Range Reconciliation file directly
+        st.subheader("📤 Upload Range Reconciliation File")
+        uploaded_recon_file = st.file_uploader(
+            "Range Reconciliation File (.xlsx)", 
+            type=["xlsx"], 
+            key="recon_file",
+            help="Upload a previously generated Range_Reconciliation file"
+        )
+        
+        if uploaded_recon_file:
+            if 'uploaded_df' not in st.session_state or st.session_state.get('uploaded_file_name') != uploaded_recon_file.name:
+                # Save uploaded file temporarily
+                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+                temp_file.write(uploaded_recon_file.getvalue())
+                temp_file.close()
+                
+                # Load the file
+                df = load_reconciliation_file(temp_file.name)
+                if df is not None:
+                    st.session_state['uploaded_df'] = df
+                    st.session_state['uploaded_file_name'] = uploaded_recon_file.name
+                    st.success(f"File loaded: {uploaded_recon_file.name}")
+                
+                # Cleanup temp file
+                os.unlink(temp_file.name)
+        
+        st.markdown("---")
+        
+        # Option 2: Upload source files and generate reconciliation
+        st.subheader("📤 Upload Source Files")
         jeves_file = st.file_uploader("JEEVES File (.xlsx)", type=["xlsx"], key="jeves")
         ct_file = st.file_uploader("CT File (.xlsb)", type=["xlsb"], key="ct")
         stibo_file = st.file_uploader("STIBO File (.xlsx)", type=["xlsx"], key="stibo")
         
         if jeves_file and ct_file and stibo_file:
-            if st.button("🔄 Run Reconciliation", use_container_width=True):
+            if st.button("🔄 Generate Reconciliation", use_container_width=True):
                 with st.spinner("Running reconciliation..."):
                     try:
-                        output_file = run_reconciliation_from_upload(jeves_file, ct_file, stibo_file)
-                        st.success(f"Reconciliation completed! File: {output_file.name}")
+                        reconciliation_df = run_reconciliation_from_upload(jeves_file, ct_file, stibo_file)
+                        st.session_state['generated_df'] = reconciliation_df
+                        st.session_state['generated_timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        st.success("Reconciliation generated successfully!")
                         st.cache_data.clear()
                         st.rerun()
                     except Exception as e:
@@ -123,39 +127,60 @@ def main():
         
         st.markdown("---")
         
-        # Option to regenerate from local files
-        if st.button("🔄 Regenerate from Local Files", use_container_width=True):
-            st.info("Running reconciliation...")
-            import subprocess
-            import sys
-            result = subprocess.run([sys.executable, "reconcile_products.py"], 
-                                  capture_output=True, text=True)
-            if result.returncode == 0:
-                st.success("Reconciliation regenerated successfully!")
-                st.cache_data.clear()
-                st.rerun()
-            else:
-                st.error(f"Error: {result.stderr}")
+        # Option 3: Load from local file (if exists)
+        st.subheader("📁 Local File")
+        range_files = list(Path(".").glob("Range_Reconciliation_*.xlsx"))
+        if range_files:
+            latest_file = max(range_files, key=lambda x: x.stat().st_mtime)
+            st.caption(f"Latest: {latest_file.name}")
+            if st.button("📂 Load Latest Local File", use_container_width=True):
+                df = load_reconciliation_file(latest_file)
+                if df is not None:
+                    st.session_state['local_df'] = df
+                    st.session_state['local_file_name'] = latest_file.name
+                    st.success("File loaded!")
+                    st.cache_data.clear()
+                    st.rerun()
+        else:
+            st.caption("No local file found")
     
-    # Load data - always use the Range_Reconciliation file
-    range_df, range_file = load_latest_analysis_files()
+    # Determine which data source to use
+    range_df = None
+    source_info = None
+    
+    # Priority: 1) Uploaded file, 2) Generated from upload, 3) Local file
+    if 'uploaded_df' in st.session_state:
+        range_df = st.session_state['uploaded_df']
+        source_info = f"Uploaded: {st.session_state.get('uploaded_file_name', 'Unknown')}"
+    elif 'generated_df' in st.session_state:
+        range_df = st.session_state['generated_df']
+        source_info = f"Generated: {st.session_state.get('generated_timestamp', 'Unknown')}"
+    elif 'local_df' in st.session_state:
+        range_df = st.session_state['local_df']
+        source_info = f"Local: {st.session_state.get('local_file_name', 'Unknown')}"
+    else:
+        # Try to load from local file automatically
+        range_files = list(Path(".").glob("Range_Reconciliation_*.xlsx"))
+        if range_files:
+            latest_file = max(range_files, key=lambda x: x.stat().st_mtime)
+            range_df = load_reconciliation_file(latest_file)
+            source_info = f"Auto-loaded: {latest_file.name}"
     
     if range_df is None:
-        st.warning("⚠️ No Range Reconciliation file found. Please upload data files or run `reconcile_products.py`")
+        st.warning("⚠️ No reconciliation data available")
         st.info("""
-        **Instructions:**
-        1. Upload the three data files using the sidebar (JEEVES .xlsx, CT .xlsb, STIBO .xlsx)
-        2. Click "Run Reconciliation" to generate the Range_Reconciliation file
-        3. Or run `reconcile_products.py` locally to generate the file
+        **Please choose one of these options:**
+        
+        1. **Upload Range Reconciliation file** - Upload a previously generated Excel file
+        2. **Upload source files** - Upload JEEVES, CT, and STIBO files to generate reconciliation
+        3. **Load local file** - If you've run `reconcile_products.py` locally
         """)
         return
     
-    # Display loaded file info
+    # Display data source info
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### 📁 Loaded File")
-    if range_file:
-        st.sidebar.caption(f"Range Recon: {Path(range_file).name}")
-        st.sidebar.caption(f"Modified: {datetime.fromtimestamp(range_file.stat().st_mtime).strftime('%Y-%m-%d %H:%M')}")
+    st.sidebar.markdown("### 📊 Data Source")
+    st.sidebar.caption(source_info if source_info else "Unknown")
     
     # Convert to pandas for Streamlit (easier for display)
     range_pd = range_df.to_pandas()
@@ -280,7 +305,7 @@ def main():
         num_rows = st.slider("Number of rows to display", 10, min(1000, len(filtered_range)), 100)
         
         st.dataframe(
-            filtered_range[["ProductCode", "CT", "JEEVES", "STIBO", "Absent_from"]],
+            filtered_range[["ProductCode", "CT", "JEEVES", "STIBO", "Absent_from"]].head(num_rows),
             use_container_width=True,
             height=400
         )
