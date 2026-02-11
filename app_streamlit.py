@@ -254,12 +254,18 @@ def show_product_reconciliation():
         with col2:
             st.metric("In all 3 sources", f"{all_three:,}", 
                      delta=f"{all_three/total_products*100:.1f}%" if total_products > 0 else "0%")
+        # Fill NaN values with empty string for consistent comparison
+        range_pd_filled = range_pd.fillna({'CT': '', 'JEEVES': '', 'STIBO': ''})
+        
         with col3:
-            st.metric("In CT only", f"{len(range_pd[(range_pd['CT'] == 'X') & (range_pd['JEEVES'] == '') & (range_pd['STIBO'] == '')]):,}")
+            ct_only = range_pd_filled[(range_pd_filled['CT'] == 'X') & (range_pd_filled['JEEVES'] != 'X') & (range_pd_filled['STIBO'] != 'X')]
+            st.metric("In CT only", f"{len(ct_only):,}")
         with col4:
-            st.metric("In JEEVES only", f"{len(range_pd[(range_pd['CT'] == '') & (range_pd['JEEVES'] == 'X') & (range_pd['STIBO'] == '')]):,}")
+            jeves_only = range_pd_filled[(range_pd_filled['CT'] != 'X') & (range_pd_filled['JEEVES'] == 'X') & (range_pd_filled['STIBO'] != 'X')]
+            st.metric("In JEEVES only", f"{len(jeves_only):,}")
         with col5:
-            st.metric("In STIBO only", f"{len(range_pd[(range_pd['CT'] == '') & (range_pd['JEEVES'] == '') & (range_pd['STIBO'] == 'X')]):,}")
+            stibo_only = range_pd_filled[(range_pd_filled['CT'] != 'X') & (range_pd_filled['JEEVES'] != 'X') & (range_pd_filled['STIBO'] == 'X')]
+            st.metric("In STIBO only", f"{len(stibo_only):,}")
         
         st.markdown("---")
         
