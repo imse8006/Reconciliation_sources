@@ -35,8 +35,6 @@ def find_latest_reconciliation_file():
 def main():
     # Sidebar
     with st.sidebar:
-        st.header("📊 Data Sources")
-        st.markdown("---")
         
         # Legal Entity selection
         st.markdown("### Legal Entity")
@@ -107,12 +105,6 @@ def show_product_reconciliation(source_name="Ekofisk"):
         return
     
     range_df = repo_df
-    
-    # Display data source info in sidebar
-    with st.sidebar:
-        st.markdown("---")
-        st.markdown("### 📊 Data Source")
-        st.caption(f"From repo: {repo_file.name}")
     
     # Convert to pandas for Streamlit (easier for display)
     range_pd = range_df.to_pandas()
