@@ -195,7 +195,6 @@ def show_product_reconciliation(source_name="Ekofisk"):
                 filtered_range["ProductCode"].astype(str).str.contains(search_term, case=False, na=False)
             ]
         
-        st.info(f"📊 {len(filtered_range)} products displayed out of {total_products} total")
         
         # Detailed visualizations (below the quick overview) - Collapsible
         with st.expander("📊 Detailed Analysis", expanded=False):
