@@ -148,50 +148,6 @@ def show_product_reconciliation():
         
         st.markdown("---")
         
-        # Quick breakdown visual
-        st.subheader("📊 Quick Status Breakdown")
-        # Fill NaN for consistent comparison
-        range_pd_filled = range_pd.fillna({'CT': '', 'JEEVES': '', 'STIBO': ''})
-        
-        breakdown_data = {
-            "✅ In all 3 sources": all_three,
-            "⚠️ In 2 sources only": len(range_pd_filled[
-                ((range_pd_filled["CT"] == "X").astype(int) + 
-                 (range_pd_filled["JEEVES"] == "X").astype(int) + 
-                 (range_pd_filled["STIBO"] == "X").astype(int)) == 2
-            ]),
-            "⚠️ In 1 source only": len(range_pd_filled[
-                ((range_pd_filled["CT"] == "X").astype(int) + 
-                 (range_pd_filled["JEEVES"] == "X").astype(int) + 
-                 (range_pd_filled["STIBO"] == "X").astype(int)) == 1
-            ]),
-            "❌ In 0 sources": len(range_pd_filled[
-                (range_pd_filled["CT"] != "X") & 
-                (range_pd_filled["JEEVES"] != "X") & 
-                (range_pd_filled["STIBO"] != "X")
-            ])
-        }
-        
-        # Create a horizontal bar chart for quick visual
-        fig_breakdown = px.bar(
-            x=list(breakdown_data.values()),
-            y=list(breakdown_data.keys()),
-            orientation='h',
-            title="Products Status Overview",
-            labels={"x": "Number of products", "y": ""},
-            color=list(breakdown_data.keys()),
-            color_discrete_map={
-                "✅ In all 3 sources": "#28a745",
-                "⚠️ In 2 sources only": "#ffc107",
-                "⚠️ In 1 source only": "#fd7e14",
-                "❌ In 0 sources": "#dc3545"
-            }
-        )
-        fig_breakdown.update_layout(showlegend=False, height=250)
-        st.plotly_chart(fig_breakdown, use_container_width=True, key="breakdown_chart")
-        
-        st.markdown("---")
-        
         # Filters
         col1, col2, col3 = st.columns(3)
         with col1:
