@@ -60,7 +60,7 @@ def main():
         st.markdown("---")
     
     # Main content area
-    if source == "Ekofisk":
+    if legal_entity == "Ekofisk":
         if domain == "Product":
             show_product_reconciliation("Ekofisk")
         elif domain == "Vendor":
@@ -69,7 +69,7 @@ def main():
         elif domain == "Customer":
             st.title("📊 Ekofisk Customer Reconciliation")
             st.info("🚧 Customer reconciliation coming soon...")
-    elif source == "Fresh Direct":
+    elif legal_entity == "Fresh Direct":
         if domain == "Product":
             st.title("📊 Fresh Direct Product Reconciliation")
             st.info("🚧 Fresh Direct Product reconciliation coming soon...")
@@ -79,7 +79,7 @@ def main():
         elif domain == "Customer":
             st.title("📊 Fresh Direct Customer Reconciliation")
             st.info("🚧 Customer reconciliation coming soon...")
-    elif source == "Classic Drinks":
+    elif legal_entity == "Classic Drinks":
         if domain == "Product":
             st.title("📊 Classic Drinks Product Reconciliation")
             st.info("🚧 Classic Drinks Product reconciliation coming soon...")
