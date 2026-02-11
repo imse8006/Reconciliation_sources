@@ -224,14 +224,35 @@ def show_product_reconciliation():
             height=400
         )
         
-        # Download
-        csv_range = filtered_range.to_csv(index=False)
-        st.download_button(
-            label="📥 Download Range Reconciliation (CSV)",
-            data=csv_range,
-            file_name=f"range_reconciliation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv"
-        )
+        # Download buttons
+        col_dl1, col_dl2 = st.columns(2)
+        
+        with col_dl1:
+            csv_range = filtered_range.to_csv(index=False)
+            st.download_button(
+                label="📥 Download Filtered Results (CSV)",
+                data=csv_range,
+                file_name=f"range_reconciliation_filtered_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+        
+        with col_dl2:
+            # Filter products NOT in all 3 sources
+            not_in_all_three = filtered_range[
+                ~((filtered_range["CT"] == "X") & 
+                  (filtered_range["JEEVES"] == "X") & 
+                  (filtered_range["STIBO"] == "X"))
+            ]
+            csv_missing = not_in_all_three.to_csv(index=False)
+            st.download_button(
+                label="📥 Download Missing from Sources (CSV)",
+                data=csv_missing,
+                file_name=f"missing_from_sources_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+            st.caption(f"⚠️ {len(not_in_all_three)} products not in all 3 sources")
     
     with tab_overview:
         st.header("Overview")
