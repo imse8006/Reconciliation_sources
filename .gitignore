@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# Fichiers de données (ne pas versionner les fichiers Excel de données)
+JEEVES/*.xlsx
+CT/*.xlsb
+STIBO/*.xlsx
+Mapping_Ekofisk.xlsx
+
+# Fichiers de sortie (générés automatiquement)
+Range_Reconciliation_*.xlsx
+Analyse*.xlsx
+
+# Fichiers de configuration système
+.reconciliation_hash.json
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Streamlit
+.streamlit/
