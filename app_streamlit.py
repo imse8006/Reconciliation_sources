@@ -68,114 +68,22 @@ def show_product_reconciliation():
     """Display Product reconciliation view"""
     st.title("📊 Ekofisk Product Reconciliation - JEEVES vs CT vs STIBO")
     st.markdown("---")
-    # Sidebar for options
-    with st.sidebar:
-        st.header("⚙️ Options")
-        st.markdown("---")
-        
-        # Option 1: Upload Range Reconciliation file directly
-        st.subheader("📤 Upload Range Reconciliation File")
-        uploaded_recon_file = st.file_uploader(
-            "Range Reconciliation File (.xlsx)", 
-            type=["xlsx"], 
-            key="recon_file",
-            help="Upload a previously generated Range_Reconciliation file"
-        )
-        
-        if uploaded_recon_file:
-            if 'uploaded_df' not in st.session_state or st.session_state.get('uploaded_file_name') != uploaded_recon_file.name:
-                # Save uploaded file temporarily
-                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
-                temp_file.write(uploaded_recon_file.getvalue())
-                temp_file.close()
-                
-                # Load the file
-                df = load_reconciliation_file(temp_file.name)
-                if df is not None:
-                    st.session_state['uploaded_df'] = df
-                    st.session_state['uploaded_file_name'] = uploaded_recon_file.name
-                    st.success(f"File loaded: {uploaded_recon_file.name}")
-                
-                # Cleanup temp file
-                os.unlink(temp_file.name)
-        
-        st.markdown("---")
-        
-        # Option 2: Upload source files and generate reconciliation
-        st.subheader("📤 Upload Source Files")
-        jeves_file = st.file_uploader("JEEVES File (.xlsx)", type=["xlsx"], key="jeves")
-        ct_file = st.file_uploader("CT File (.xlsb)", type=["xlsb"], key="ct")
-        stibo_file = st.file_uploader("STIBO File (.xlsx)", type=["xlsx"], key="stibo")
-        
-        if jeves_file and ct_file and stibo_file:
-            if st.button("🔄 Generate Reconciliation", use_container_width=True):
-                with st.spinner("Running reconciliation..."):
-                    try:
-                        reconciliation_df = run_reconciliation_from_upload(jeves_file, ct_file, stibo_file)
-                        st.session_state['generated_df'] = reconciliation_df
-                        st.session_state['generated_timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                        st.success("Reconciliation generated successfully!")
-                        st.cache_data.clear()
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error: {str(e)}")
-                        import traceback
-                        st.code(traceback.format_exc())
-        
-        st.markdown("---")
-        
-        # Option 3: Load from repo/local file (if exists)
-        st.subheader("📁 Repository File")
-        repo_file, _ = find_latest_reconciliation_file()
-        if repo_file:
-            st.caption(f"Available: {repo_file.name}")
-            if st.button("📂 Load from Repository", use_container_width=True):
-                df = load_reconciliation_file(repo_file)
-                if df is not None:
-                    st.session_state['local_df'] = df
-                    st.session_state['local_file_name'] = repo_file.name
-                    st.success("File loaded!")
-                    st.cache_data.clear()
-                    st.rerun()
-        else:
-            st.caption("No file in repository")
     
-    # Determine which data source to use
-    range_df = None
-    source_info = None
+    # Load data automatically from repo
+    repo_file, repo_df = find_latest_reconciliation_file()
     
-    # Priority: 1) Uploaded file, 2) Generated from upload, 3) Local file, 4) Repo file
-    if 'uploaded_df' in st.session_state:
-        range_df = st.session_state['uploaded_df']
-        source_info = f"Uploaded: {st.session_state.get('uploaded_file_name', 'Unknown')}"
-    elif 'generated_df' in st.session_state:
-        range_df = st.session_state['generated_df']
-        source_info = f"Generated: {st.session_state.get('generated_timestamp', 'Unknown')}"
-    elif 'local_df' in st.session_state:
-        range_df = st.session_state['local_df']
-        source_info = f"Local: {st.session_state.get('local_file_name', 'Unknown')}"
-    else:
-        # Try to load from repo file automatically
-        repo_file, repo_df = find_latest_reconciliation_file()
-        if repo_df is not None and repo_file:
-            range_df = repo_df
-            source_info = f"From repo: {repo_file.name}"
-    
-    if range_df is None:
+    if repo_df is None or repo_file is None:
         st.warning("⚠️ No reconciliation data available")
-        st.info("""
-        **Please choose one of these options:**
-        
-        1. **Upload Range Reconciliation file** - Upload a previously generated Excel file
-        2. **Upload source files** - Upload JEEVES, CT, and STIBO files to generate reconciliation
-        3. **Load local file** - If you've run `reconcile_products.py` locally
-        """)
+        st.info("Please ensure that `Range_Reconciliation_*.xlsx` file exists in the repository.")
         return
     
-    # Display data source info
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### 📊 Data Source")
-    st.sidebar.caption(source_info if source_info else "Unknown")
+    range_df = repo_df
+    
+    # Display data source info in sidebar
+    with st.sidebar:
+        st.markdown("---")
+        st.markdown("### 📊 Data Source")
+        st.caption(f"From repo: {repo_file.name}")
     
     # Convert to pandas for Streamlit (easier for display)
     range_pd = range_df.to_pandas()
