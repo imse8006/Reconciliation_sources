@@ -230,9 +230,9 @@ def show_product_reconciliation():
         with col_dl1:
             csv_range = filtered_range.to_csv(index=False)
             st.download_button(
-                label="📥 Download Filtered Results (CSV)",
+                label="📥 Download all data",
                 data=csv_range,
-                file_name=f"range_reconciliation_filtered_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                file_name=f"range_reconciliation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                 mime="text/csv",
                 use_container_width=True
             )
