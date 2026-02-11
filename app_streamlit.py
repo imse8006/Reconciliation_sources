@@ -308,11 +308,20 @@ def main():
         # Data table
         st.subheader("Detailed Data")
         
-        # Display options
-        num_rows = st.slider("Number of rows to display", 10, min(1000, len(filtered_range)), 100)
+        # Sort by Absent_from: non-empty values first (products missing from sources)
+        filtered_range_sorted = filtered_range.copy()
+        filtered_range_sorted['_sort_key'] = filtered_range_sorted['Absent_from'].apply(
+            lambda x: 0 if x and str(x).strip() else 1
+        )
+        filtered_range_sorted = filtered_range_sorted.sort_values(
+            by=['_sort_key', 'Absent_from']
+        ).drop(columns=['_sort_key'])
+        
+        # Display 705 rows
+        num_rows = 705
         
         st.dataframe(
-            filtered_range[["ProductCode", "CT", "JEEVES", "STIBO", "Absent_from"]].head(num_rows),
+            filtered_range_sorted[["ProductCode", "CT", "JEEVES", "STIBO", "Absent_from"]].head(num_rows),
             use_container_width=True,
             height=400
         )
