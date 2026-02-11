@@ -237,7 +237,7 @@ def show_product_reconciliation():
         st.header("Overview")
         
         # Main metrics
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3, col4, col5 = st.columns(5)
         
         total_products = len(range_pd)
         ct_count = len(range_pd[range_pd["CT"] == "X"])
@@ -258,6 +258,8 @@ def show_product_reconciliation():
             st.metric("In CT only", f"{len(range_pd[(range_pd['CT'] == 'X') & (range_pd['JEEVES'] == '') & (range_pd['STIBO'] == '')]):,}")
         with col4:
             st.metric("In JEEVES only", f"{len(range_pd[(range_pd['CT'] == '') & (range_pd['JEEVES'] == 'X') & (range_pd['STIBO'] == '')]):,}")
+        with col5:
+            st.metric("In STIBO only", f"{len(range_pd[(range_pd['CT'] == '') & (range_pd['JEEVES'] == '') & (range_pd['STIBO'] == 'X')]):,}")
         
         st.markdown("---")
         
