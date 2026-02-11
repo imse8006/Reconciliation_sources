@@ -1,17 +1,17 @@
 # Reconciliation Sources - Ekofisk Products
 
-Outil de réconciliation des produits entre différentes sources de données (CT Ekofisk, JEEVES, STIBO).
+Product reconciliation tool for comparing data across different sources (CT Ekofisk, JEEVES, STIBO).
 
 ## Description
 
-Ce projet permet de comparer et réconcilier les données produits entre trois sources principales :
-- **CT** : Données Ekofisk depuis le fichier CT
-- **JEEVES** : Données depuis la feuille 3-STIBO-TRACKER
-- **STIBO** : Données STIBO
+This project enables comparison and reconciliation of product data across three main sources:
+- **CT** : Ekofisk data from CT file
+- **JEEVES** : Data from sheet 3-STIBO-TRACKER
+- **STIBO** : STIBO data
 
-Le script génère un fichier Excel de réconciliation qui liste tous les produits uniques et indique leur présence dans chaque source.
+The script generates an Excel reconciliation file that lists all unique products and indicates their presence in each source.
 
-## Structure du projet
+## Project Structure
 
 ```
 Reconciliation_Ekofisk_JEEVES/
@@ -21,20 +21,20 @@ Reconciliation_Ekofisk_JEEVES/
 │   └── P1 Data Cleansing - Product Ekofisk.xlsb
 ├── STIBO/
 │   └── extract_stibo_all_products.xlsx
-├── reconcile_products.py      # Script principal de réconciliation
-├── app_streamlit.py            # Application Streamlit pour visualisation
+├── reconcile_products.py      # Main reconciliation script
+├── app_streamlit.py            # Streamlit visualization app
 └── README.md
 ```
 
-## Prérequis
+## Prerequisites
 
 - Python 3.8+
-- Bibliothèques Python :
-  - `polars` (avec support Excel)
+- Python libraries:
+  - `polars` (with Excel support)
   - `openpyxl`
   - `pyxlsb`
-  - `streamlit` (pour l'application web)
-  - `plotly` (pour les graphiques)
+  - `streamlit` (for web application)
+  - `plotly` (for charts)
 
 ## Installation
 
@@ -42,73 +42,73 @@ Reconciliation_Ekofisk_JEEVES/
 pip install polars[excel] openpyxl pyxlsb streamlit plotly
 ```
 
-## Utilisation
+## Usage
 
-### 1. Réconciliation des produits
+### 1. Product Reconciliation
 
-Exécuter le script principal pour générer le fichier de réconciliation :
+Run the main script to generate the reconciliation file:
 
 ```bash
 python reconcile_products.py
 ```
 
-**Fichier généré** : `Range_Reconciliation_[timestamp].xlsx`
+**Generated file**: `Range_Reconciliation_[timestamp].xlsx`
 
-**Contenu du fichier** :
-- `ProductCode` : Code produit unique (SUPC)
-- `CT` : "X" si présent, vide si absent
-- `JEEVES` : "X" si présent, vide si absent
-- `STIBO` : "X" si présent, vide si absent
-- `Absent_from` : Liste des sources où le produit est absent (ou "-" si présent partout)
+**File contents**:
+- `ProductCode`: Unique product code (SUPC)
+- `CT`: "X" if present, empty if absent
+- `JEEVES`: "X" if present, empty if absent
+- `STIBO`: "X" if present, empty if absent
+- `Absent_from`: List of sources where the product is absent (or "-" if present everywhere)
 
-### 2. Visualisation interactive (Streamlit)
+### 2. Interactive Visualization (Streamlit)
 
-Lancer l'application web pour visualiser les résultats :
+Launch the web application to visualize results:
 
 ```bash
 streamlit run app_streamlit.py
 ```
 
-L'application s'ouvre automatiquement dans votre navigateur à `http://localhost:8501`
+The application opens automatically in your browser at `http://localhost:8501`
 
-**Fonctionnalités** :
-- Vue d'ensemble avec statistiques
-- Filtres par source (CT, JEEVES, STIBO)
-- Recherche de produits
-- Graphiques interactifs
-- Export CSV
+**Features**:
+- Overview with statistics
+- Filters by source (CT, JEEVES, STIBO)
+- Product search
+- Interactive charts
+- CSV export
 
-## Format des données sources
+## Source Data Format
 
 ### JEEVES
-- **Fichier** : `JEEVES/RECONC Product Data 2026-02-04.xlsx`
-- **Feuille** : `3-STIBO-TRACKER`
-- **Colonne produit** : `SUPC` (colonne A)
-- **En-têtes** : Ligne 1
-- **Données** : À partir de la ligne 2
+- **File**: `JEEVES/RECONC Product Data 2026-02-04.xlsx`
+- **Sheet**: `3-STIBO-TRACKER`
+- **Product column**: `SUPC` (column A)
+- **Headers**: Row 1
+- **Data**: Starting from row 2
 
 ### CT
-- **Fichier** : `CT/P1 Data Cleansing - Product Ekofisk.xlsb`
-- **Feuille** : `Item`
-- **Colonne produit** : `SUPC` (colonne B)
-- **En-têtes** : Ligne 6
-- **Données** : À partir de la ligne 7, colonne B
+- **File**: `CT/P1 Data Cleansing - Product Ekofisk.xlsb`
+- **Sheet**: `Item`
+- **Product column**: `SUPC` (column B)
+- **Headers**: Row 6
+- **Data**: Starting from row 7, column B
 
 ### STIBO
-- **Fichier** : `STIBO/extract_stibo_all_products.xlsx`
-- **Colonne produit** : `SUPC` (colonne A)
-- **En-têtes** : Ligne 1
-- **Données** : À partir de la ligne 2
+- **File**: `STIBO/extract_stibo_all_products.xlsx`
+- **Product column**: `SUPC` (column A)
+- **Headers**: Row 1
+- **Data**: Starting from row 2
 
-## Gestion des fichiers
+## File Management
 
-Le script détecte automatiquement si les fichiers d'entrée ont changé :
-- **Fichiers identiques** : Écrase le fichier de sortie existant
-- **Fichiers modifiés** : Crée un nouveau fichier avec timestamp
+The script automatically detects if input files have changed:
+- **Identical files**: Overwrites existing output file
+- **Modified files**: Creates a new file with timestamp
 
-Un fichier `.reconciliation_hash.json` est créé automatiquement pour suivre les changements.
+A `.reconciliation_hash.json` file is automatically created to track changes.
 
-## Exemple de sortie
+## Output Example
 
 | ProductCode | CT | JEEVES | STIBO | Absent_from |
 |-------------|----|--------|-------|-------------|
@@ -116,10 +116,10 @@ Un fichier `.reconciliation_hash.json` est créé automatiquement pour suivre le
 | 215455      | X  |        | X     | JEEVES      |
 | 5021339     |    | X      |       | CT, STIBO   |
 
-## Auteur
+## Author
 
-Développé pour la réconciliation des produits Ekofisk.
+Developed for Ekofisk product reconciliation.
 
-## Licence
+## License
 
-Propriétaire - Usage interne uniquement.
+Proprietary - Internal use only.
