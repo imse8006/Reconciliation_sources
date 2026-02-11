@@ -162,9 +162,7 @@ def show_product_reconciliation(source_name="Ekofisk"):
             missing_ct = total_products - ct_count
             missing_jeves = total_products - jeves_count
             missing_stibo = total_products - stibo_count
-            st.metric("Missing from CT/JEEVES/STIBO", f"{missing_ct}/{missing_jeves}/{missing_stibo}", 
-                     delta=f"-{missing_ct}/-{missing_jeves}/-{missing_stibo}" if (missing_ct > 0 or missing_jeves > 0 or missing_stibo > 0) else None,
-                     delta_color="inverse" if (missing_ct > 0 or missing_jeves > 0 or missing_stibo > 0) else "off")
+            st.metric("Missing from CT/JEEVES/STIBO", f"{missing_ct}/{missing_jeves}/{missing_stibo}")
         
         st.markdown("---")
         
