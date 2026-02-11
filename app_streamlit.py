@@ -288,7 +288,7 @@ def main():
                 names=list(status_counts.keys()),
                 title="Distribution by number of sources"
             )
-            st.plotly_chart(fig_pie, use_container_width=True)
+            st.plotly_chart(fig_pie, use_container_width=True, key="pie_range")
         
         with col_right:
             # Bar chart by source
@@ -303,7 +303,7 @@ def main():
                 title="Number of products by source",
                 labels={"x": "Source", "y": "Number of products"}
             )
-            st.plotly_chart(fig_bar, use_container_width=True)
+            st.plotly_chart(fig_bar, use_container_width=True, key="bar_range")
         
         # Data table
         st.subheader("Detailed Data")
@@ -375,7 +375,7 @@ def main():
                 names=list(presence_patterns.keys()),
                 title="Product distribution by source combination"
             )
-            st.plotly_chart(fig_pie, use_container_width=True)
+            st.plotly_chart(fig_pie, use_container_width=True, key="pie_overview")
         
         with col_right:
             # Bar chart
@@ -390,7 +390,7 @@ def main():
                 title="Number of products by source",
                 labels={"x": "Source", "y": "Number of products"}
             )
-            st.plotly_chart(fig_bar, use_container_width=True)
+            st.plotly_chart(fig_bar, use_container_width=True, key="bar_overview")
     
 
 if __name__ == "__main__":
