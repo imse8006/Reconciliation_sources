@@ -50,9 +50,6 @@ def main():
         )
         
         st.markdown("---")
-        
-        # Display current selection
-        st.caption(f"📍 **Ekofisk > {domain}**")
     
     # Main content area
     if domain == "Product":
