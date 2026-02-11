@@ -33,9 +33,9 @@ def find_latest_reconciliation_file():
     return None, None
 
 def main():
-    # Navigation sidebar
+    # Sidebar
     with st.sidebar:
-        st.header("📊 Navigation")
+        st.header("📊 Data Sources")
         st.markdown("---")
         
         # Legal Entity selection
@@ -61,9 +61,6 @@ def main():
         )
         
         st.markdown("---")
-        
-        # Current selection display
-        st.markdown(f"**📍 {legal_entity}** → **{domain}**")
     
     # Main content area
     if legal_entity == "Ekofisk":
