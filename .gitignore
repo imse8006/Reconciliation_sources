@@ -30,5 +30,6 @@ Thumbs.db
 *.swp
 *.swo
 
-# Streamlit
-.streamlit/
+# Streamlit (allow config.toml)
+.streamlit/*
+!.streamlit/config.toml
