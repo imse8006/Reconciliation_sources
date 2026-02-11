@@ -101,7 +101,7 @@ def show_product_reconciliation():
     tab_range, tab_overview = st.tabs(["✅ Range Reconciliation", "📈 Overview"])
     
     with tab_range:
-        st.header("✅ Range Reconciliation")
+        st.header("Range Reconciliation")
         st.markdown("List of all products with their presence in CT, JEEVES and STIBO")
         
         # Statistics
