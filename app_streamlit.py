@@ -38,10 +38,18 @@ def main():
         st.header("📊 Navigation")
         st.markdown("---")
         
-        # Main level: Ekofisk
-        st.subheader("Ekofisk")
+        # Main level: Source selection
+        source = st.radio(
+            "Source",
+            ["Ekofisk", "Fresh Direct", "Classic Drinks"],
+            index=0,
+            key="source_selector"
+        )
+        
+        st.markdown("---")
         
         # Domain selection
+        st.subheader(source)
         domain = st.radio(
             "Domain",
             ["Product", "Vendor", "Customer"],
@@ -52,18 +60,39 @@ def main():
         st.markdown("---")
     
     # Main content area
-    if domain == "Product":
-        show_product_reconciliation()
-    elif domain == "Vendor":
-        st.title("📊 Ekofisk Vendor Reconciliation")
-        st.info("🚧 Vendor reconciliation coming soon...")
-    elif domain == "Customer":
-        st.title("📊 Ekofisk Customer Reconciliation")
-        st.info("🚧 Customer reconciliation coming soon...")
+    if source == "Ekofisk":
+        if domain == "Product":
+            show_product_reconciliation("Ekofisk")
+        elif domain == "Vendor":
+            st.title("📊 Ekofisk Vendor Reconciliation")
+            st.info("🚧 Vendor reconciliation coming soon...")
+        elif domain == "Customer":
+            st.title("📊 Ekofisk Customer Reconciliation")
+            st.info("🚧 Customer reconciliation coming soon...")
+    elif source == "Fresh Direct":
+        if domain == "Product":
+            st.title("📊 Fresh Direct Product Reconciliation")
+            st.info("🚧 Fresh Direct Product reconciliation coming soon...")
+        elif domain == "Vendor":
+            st.title("📊 Fresh Direct Vendor Reconciliation")
+            st.info("🚧 Vendor reconciliation coming soon...")
+        elif domain == "Customer":
+            st.title("📊 Fresh Direct Customer Reconciliation")
+            st.info("🚧 Customer reconciliation coming soon...")
+    elif source == "Classic Drinks":
+        if domain == "Product":
+            st.title("📊 Classic Drinks Product Reconciliation")
+            st.info("🚧 Classic Drinks Product reconciliation coming soon...")
+        elif domain == "Vendor":
+            st.title("📊 Classic Drinks Vendor Reconciliation")
+            st.info("🚧 Vendor reconciliation coming soon...")
+        elif domain == "Customer":
+            st.title("📊 Classic Drinks Customer Reconciliation")
+            st.info("🚧 Customer reconciliation coming soon...")
 
-def show_product_reconciliation():
+def show_product_reconciliation(source_name="Ekofisk"):
     """Display Product reconciliation view"""
-    st.title("📊 Ekofisk Product Reconciliation - JEEVES vs CT vs STIBO")
+    st.title(f"📊 {source_name} Product Reconciliation - JEEVES vs CT vs STIBO")
     st.markdown("---")
     
     # Load data automatically from repo
@@ -122,7 +151,7 @@ def show_product_reconciliation():
         st.markdown("---")
         
         # Main visual metrics - Large and clear
-        col1, col2, col3, col4, col5 = st.columns(5)
+        col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             st.metric("Total products", f"{total_products:,}")
@@ -136,15 +165,11 @@ def show_product_reconciliation():
                      delta_color="inverse")
         with col4:
             missing_ct = total_products - ct_count
-            st.metric("Missing from CT", f"{missing_ct:,}", 
-                     delta=f"-{missing_ct}" if missing_ct > 0 else None,
-                     delta_color="inverse" if missing_ct > 0 else "off")
-        with col5:
             missing_jeves = total_products - jeves_count
             missing_stibo = total_products - stibo_count
-            st.metric("Missing from JEEVES/STIBO", f"{missing_jeves}/{missing_stibo}", 
-                     delta=f"-{missing_jeves}/-{missing_stibo}" if (missing_jeves > 0 or missing_stibo > 0) else None,
-                     delta_color="inverse" if (missing_jeves > 0 or missing_stibo > 0) else "off")
+            st.metric("Missing from CT/JEEVES/STIBO", f"{missing_ct}/{missing_jeves}/{missing_stibo}", 
+                     delta=f"-{missing_ct}/-{missing_jeves}/-{missing_stibo}" if (missing_ct > 0 or missing_jeves > 0 or missing_stibo > 0) else None,
+                     delta_color="inverse" if (missing_ct > 0 or missing_jeves > 0 or missing_stibo > 0) else "off")
         
         st.markdown("---")
         
