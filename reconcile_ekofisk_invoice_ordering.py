@@ -1,4 +1,4 @@
-﻿"""
+"""
 Invoice and Ordering-Shipping reconciliation (STIBO, CT, JEEVES).
 Compares Vendor and Customer across sources. Supports market filter (Ekofisk, Fresh, Classic).
 Output: Reconciliation_{market}.xlsx with sheets Invoice and Ordering-Shipping.
@@ -174,9 +174,9 @@ def load_stibo_customer_invoice(path: Path) -> pl.DataFrame:
         v = ws.cell(row=row, column=col_idx).value
         if v is None or (isinstance(v, str) and not v.strip()):
             continue
-        values.append(v)
+        values.append(str(v).strip())
     wb.close()
-    return pl.DataFrame({KEY_COL: values})
+    return pl.DataFrame({KEY_COL: pl.Series(values).cast(pl.Utf8)})
 
 
 def load_jeves_vendor_invoice(path: Path) -> pl.DataFrame:
@@ -235,15 +235,16 @@ def load_jeves_vendor_ordering(path: Path) -> pl.DataFrame:
     return pl.DataFrame({KEY_COL: pl.Series(values).cast(pl.Utf8)})
 
 
-# JEEVES Customer Invoice: sheet "INVOICECUSTOMER", column A from row 3
+# JEEVES Customer Invoice: sheet "INVOICECUSTOMER", column H "Customer Code - Invoice" from row 3
 JEEVES_CUSTOMER_INVOICE_SHEET = "INVOICECUSTOMER"
+JEEVES_CUSTOMER_INVOICE_COL = 8  # H = "Customer Code - Invoice"
 # JEEVES Customer OS: sheet "ORDERSHIPPING", column A from row 3
 JEEVES_CUSTOMER_OS_SHEETS = ("ORDERSHIPPING", "OrderShipping", "ORDERINGSHIPPING")
 JEEVES_CUSTOMER_OS_DATA_ROW = 3
 
 
 def load_jeves_customer_invoice(path: Path) -> pl.DataFrame:
-    """JEEVES Customer Invoice: sheet 'INVOICECUSTOMER', column A from row 3."""
+    """JEEVES Customer Invoice: sheet 'INVOICECUSTOMER', column H 'Customer Code - Invoice' from row 3."""
     wb = load_workbook(path, data_only=True)
     if JEEVES_CUSTOMER_INVOICE_SHEET not in wb.sheetnames:
         wb.close()
@@ -253,7 +254,7 @@ def load_jeves_customer_invoice(path: Path) -> pl.DataFrame:
     ws = wb[JEEVES_CUSTOMER_INVOICE_SHEET]
     values = []
     for row in range(JEEVES_CUSTOMER_DATA_ROW, ws.max_row + 1):
-        v = ws.cell(row=row, column=1).value
+        v = ws.cell(row=row, column=JEEVES_CUSTOMER_INVOICE_COL).value
         if v is None or (isinstance(v, str) and not v.strip()):
             continue
         values.append(str(v).strip())
