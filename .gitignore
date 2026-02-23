@@ -15,8 +15,10 @@ CT/*.xlsb
 STIBO/*.xlsx
 Mapping_Ekofisk.xlsx
 
-# Output files
-output/
+# Output files (allow output/2302/Reconciliation_*.xlsx so Streamlit can load after clone)
+output/*
+!output/2302/
+!output/2302/Reconciliation_*.xlsx
 Analyse*.xlsx
 
 # Fichiers de configuration système
