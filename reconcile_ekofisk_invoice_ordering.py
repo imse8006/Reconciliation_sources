@@ -22,7 +22,8 @@ JEEVES_CUSTOMER_NEEDLE = "Customer"
 CT_SHEET_INVOICE = "Invoice"
 CT_SHEET_ORDERING = "OrderingShipping"
 CT_COL_C = 3
-CT_VENDOR_OS_COL = 4  # Column D for Vendor Ordering-Shipping (C for others)
+CT_VENDOR_OS_COL = 4  # Column D for Vendor Ordering-Shipping
+CT_CUSTOMER_OS_COL = 4  # Column D for Customer Ordering-Shipping (D8+)
 CT_FIRST_ROW = 8
 
 # JEEVES: Customer = headers row 2, data row 3+, column A. Vendor = headers row 1, column "SUVC -Invoice"
@@ -447,7 +448,7 @@ def run_invoice_ordering_reconciliation(
     ct_vendor_inv = _normalize(load_ct_column(ct_vendor_file, CT_SHEET_INVOICE))
     ct_vendor_ord = _normalize(load_ct_column(ct_vendor_file, CT_SHEET_ORDERING, col=CT_VENDOR_OS_COL))
     ct_customer_inv = _normalize(load_ct_column(ct_customer_file, CT_SHEET_INVOICE))
-    ct_customer_ord = _normalize(load_ct_column(ct_customer_file, CT_SHEET_ORDERING))
+    ct_customer_ord = _normalize(load_ct_column(ct_customer_file, CT_SHEET_ORDERING, col=CT_CUSTOMER_OS_COL))
 
     # JEEVES: search in dated folder or root
     jeves_vendor_file = find_first_file(jeves_search_dir, JEEVES_VENDOR_NEEDLE, market=None)
