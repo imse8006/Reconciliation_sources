@@ -273,8 +273,6 @@ def show_vendor_customer_reconciliation(legal_entity: str, focus: str):
     market = _legal_entity_to_market(legal_entity)
     title = "Vendor" if focus == "Vendor" else "Customer"
     st.title(f"{legal_entity} {title} Reconciliation - STIBO vs CT vs JEEVES")
-    st.markdown("Invoice & Ordering-Shipping")
-    st.markdown("---")
 
     invoice_df, ordering_df = load_invoice_ordering_reconciliation(legal_entity, focus)
     no_invoice = invoice_df is None or (hasattr(invoice_df, "height") and invoice_df.height == 0)
