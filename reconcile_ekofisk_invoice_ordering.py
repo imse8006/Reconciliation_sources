@@ -236,16 +236,15 @@ def load_jeves_vendor_ordering(path: Path) -> pl.DataFrame:
     return pl.DataFrame({KEY_COL: pl.Series(values).cast(pl.Utf8)})
 
 
-# JEEVES Customer Invoice: sheet "INVOICECUSTOMER", column H "Customer Code - Invoice" from row 3
+# JEEVES Customer Invoice: sheet "INVOICECUSTOMER", column A, headers row 2, data from row 3
 JEEVES_CUSTOMER_INVOICE_SHEET = "INVOICECUSTOMER"
-JEEVES_CUSTOMER_INVOICE_COL = 8  # H = "Customer Code - Invoice"
 # JEEVES Customer OS: sheet "ORDERSHIPPING", column A from row 3
 JEEVES_CUSTOMER_OS_SHEETS = ("ORDERSHIPPING", "OrderShipping", "ORDERINGSHIPPING")
 JEEVES_CUSTOMER_OS_DATA_ROW = 3
 
 
 def load_jeves_customer_invoice(path: Path) -> pl.DataFrame:
-    """JEEVES Customer Invoice: sheet 'INVOICECUSTOMER', column H 'Customer Code - Invoice' from row 3."""
+    """JEEVES Customer Invoice: sheet 'INVOICECUSTOMER', column A, headers row 2, data from row 3."""
     wb = load_workbook(path, data_only=True)
     if JEEVES_CUSTOMER_INVOICE_SHEET not in wb.sheetnames:
         wb.close()
@@ -255,7 +254,7 @@ def load_jeves_customer_invoice(path: Path) -> pl.DataFrame:
     ws = wb[JEEVES_CUSTOMER_INVOICE_SHEET]
     values = []
     for row in range(JEEVES_CUSTOMER_DATA_ROW, ws.max_row + 1):
-        v = ws.cell(row=row, column=JEEVES_CUSTOMER_INVOICE_COL).value
+        v = ws.cell(row=row, column=1).value
         if v is None or (isinstance(v, str) and not v.strip()):
             continue
         values.append(str(v).strip())
@@ -288,6 +287,32 @@ def load_jeves_customer_ordering(path: Path) -> pl.DataFrame:
 
 def _normalize(df: pl.DataFrame) -> pl.DataFrame:
     return df.with_columns(pl.col(KEY_COL).cast(pl.Utf8).str.strip_chars()).filter(
+        pl.col(KEY_COL).is_not_null() & (pl.col(KEY_COL) != "")
+    )
+
+
+def _os_customer_code_to_str(val) -> str:
+    """Convert value to string for OS Customer code; preserve leading zeros (e.g. 5 -> '0005')."""
+    if isinstance(val, (int, float)) and not isinstance(val, bool):
+        n = int(float(val))
+        if 0 <= n < 10000:
+            return f"{n:04d}"
+        return str(n)
+    s = str(val).strip()
+    # String that looks like an integer: zero-pad to 4 digits for consistent comparison
+    if s.isdigit():
+        n = int(s)
+        if 0 <= n < 10000:
+            return f"{n:04d}"
+    return s
+
+
+def _normalize_os_customer_codes(df: pl.DataFrame) -> pl.DataFrame:
+    """Apply string comparison for OS Customer: numeric codes become zero-padded (e.g. 5 -> '0005')."""
+    if df.height == 0:
+        return df
+    codes = [_os_customer_code_to_str(v) for v in df[KEY_COL].to_list()]
+    return pl.DataFrame({KEY_COL: codes}).filter(
         pl.col(KEY_COL).is_not_null() & (pl.col(KEY_COL) != "")
     )
 
@@ -462,6 +487,11 @@ def run_invoice_ordering_reconciliation(
     jeves_customer_inv = _normalize(load_jeves_customer_invoice(jeves_customer_file))
     jeves_vendor_ord = _normalize(load_jeves_vendor_ordering(jeves_vendor_file))
     jeves_customer_ord = _normalize(load_jeves_customer_ordering(jeves_customer_file))
+
+    # OS Customer only: compare codes as strings with leading zeros (e.g. "0005" not "5")
+    stibo_customer_ord = _normalize_os_customer_codes(stibo_customer_ord)
+    ct_customer_ord = _normalize_os_customer_codes(ct_customer_ord)
+    jeves_customer_ord = _normalize_os_customer_codes(jeves_customer_ord)
 
     rec_invoice = build_reconciliation(
         stibo_vendor_inv, stibo_customer_inv, ct_vendor_inv, ct_customer_inv,
