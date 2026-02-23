@@ -476,9 +476,9 @@ def run_invoice_ordering_reconciliation(
     write_reconciliation_excel_5_tabs(out_path, rec_invoice, rec_ordering, product_df=product_df)
     print(f"  Market: {market or 'Ekofisk'}")
     print(f"  Fichiers lus: STIBO (Vendor/Customer), CT ({ct_vendor_file.name} / {ct_customer_file.name}), JEEVES ({jeves_vendor_file.name} / {jeves_customer_file.name})")
-    print(f"  Onglets g├®n├®r├®s: Product | Vendor Invoice | Vendor OS | Customer Invoice | Customer OS")
+    print("  Onglets generes: Product | Vendor Invoice | Vendor OS | Customer Invoice | Customer OS")
     print(f"  Lignes: Invoice={rec_invoice.height}, Ordering-Shipping={rec_ordering.height}")
-    print(f"  -> ├ëcrit: {out_path}")
+    print(f"  -> ecrit: {out_path}")
     return out_path
 
 
