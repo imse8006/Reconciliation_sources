@@ -22,6 +22,7 @@ JEEVES_CUSTOMER_NEEDLE = "Customer"
 CT_SHEET_INVOICE = "Invoice"
 CT_SHEET_ORDERING = "OrderingShipping"
 CT_COL_C = 3
+CT_VENDOR_OS_COL = 4  # Column D for Vendor Ordering-Shipping (C for others)
 CT_FIRST_ROW = 8
 
 # JEEVES: Customer = headers row 2, data row 3+, column A. Vendor = headers row 1, column "SUVC -Invoice"
@@ -63,7 +64,7 @@ def load_ct_column(path: Path, sheet_name: str, col: int = CT_COL_C, start_row: 
         v = ws.cell(row=row, column=col).value
         if v is None or (isinstance(v, str) and not v.strip()):
             break
-        values.append(v)
+        values.append(str(v).strip())
     wb.close()
     return pl.DataFrame({KEY_COL: values})
 
@@ -443,7 +444,7 @@ def run_invoice_ordering_reconciliation(
         raise FileNotFoundError(f"CT Customer file not found in {ct_search_dir.absolute()} (market={market or 'any'}).")
 
     ct_vendor_inv = _normalize(load_ct_column(ct_vendor_file, CT_SHEET_INVOICE))
-    ct_vendor_ord = _normalize(load_ct_column(ct_vendor_file, CT_SHEET_ORDERING))
+    ct_vendor_ord = _normalize(load_ct_column(ct_vendor_file, CT_SHEET_ORDERING, col=CT_VENDOR_OS_COL))
     ct_customer_inv = _normalize(load_ct_column(ct_customer_file, CT_SHEET_INVOICE))
     ct_customer_ord = _normalize(load_ct_column(ct_customer_file, CT_SHEET_ORDERING))
 

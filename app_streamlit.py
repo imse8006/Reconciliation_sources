@@ -272,7 +272,7 @@ def show_vendor_customer_reconciliation(legal_entity: str, focus: str):
     """Display Vendor or Customer reconciliation – same presentation as Product (alert, metrics, filters, charts, table)."""
     market = _legal_entity_to_market(legal_entity)
     title = "Vendor" if focus == "Vendor" else "Customer"
-    st.title(f"📊 {legal_entity} {title} Reconciliation - STIBO vs CT vs JEEVES")
+    st.title(f"{legal_entity} {title} Reconciliation - STIBO vs CT vs JEEVES")
     st.markdown("Invoice & Ordering-Shipping")
     st.markdown("---")
 
@@ -287,7 +287,7 @@ def show_vendor_customer_reconciliation(legal_entity: str, focus: str):
     source_cols = ["STIBO_Vendor", "CT_Vendor", "JEEVES_Vendor"] if focus == "Vendor" else ["STIBO_Customer", "CT_Customer", "JEEVES_Customer"]
     key_col = "Code"
 
-    tab_inv, tab_ord = st.tabs(["✅ Invoice Reconciliation", "✅ Ordering-Shipping Reconciliation"])
+    tab_inv, tab_ord = st.tabs(["Invoice Reconciliation", "Ordering-Shipping Reconciliation"])
 
     with tab_inv:
         if no_invoice:
@@ -440,7 +440,7 @@ def main():
             show_vendor_customer_reconciliation("Ekofisk", "Customer")
     elif legal_entity == "Fresh Direct":
         if domain == "Product":
-            st.title("📊 Fresh Direct Product Reconciliation")
+            st.title("Fresh Direct Product Reconciliation")
             st.info("🚧 Fresh Direct Product reconciliation coming soon...")
         elif domain == "Vendor":
             show_vendor_customer_reconciliation("Fresh Direct", "Vendor")
@@ -448,7 +448,7 @@ def main():
             show_vendor_customer_reconciliation("Fresh Direct", "Customer")
     elif legal_entity == "Classic Drinks":
         if domain == "Product":
-            st.title("📊 Classic Drinks Product Reconciliation")
+            st.title("Classic Drinks Product Reconciliation")
             st.info("🚧 Classic Drinks Product reconciliation coming soon...")
         elif domain == "Vendor":
             show_vendor_customer_reconciliation("Classic Drinks", "Vendor")
