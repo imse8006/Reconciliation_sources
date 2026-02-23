@@ -262,8 +262,19 @@ def load_jeves_customer_invoice(path: Path) -> pl.DataFrame:
     return pl.DataFrame({KEY_COL: pl.Series(values).cast(pl.Utf8)})
 
 
+def _jeves_os_customer_code_raw(val) -> str | None:
+    """Preserve JEEVES Customer OS code as string; keep leading zeros. If Excel returns int 5, pad to '0005'."""
+    if val is None or (isinstance(val, str) and not val.strip()):
+        return None
+    if isinstance(val, (int, float)) and not isinstance(val, bool):
+        n = int(float(val))
+        return f"{n:04d}" if 0 <= n < 10000 else str(n)
+    s = str(val).strip()
+    return s if s else None
+
+
 def load_jeves_customer_ordering(path: Path) -> pl.DataFrame:
-    """JEEVES Customer OS: sheet 'ORDERSHIPPING', column A from row 3."""
+    """JEEVES Customer OS: sheet 'ORDERSHIPPING', column A from row 3. Preserves leading zeros (e.g. 0005)."""
     wb = load_workbook(path, data_only=True)
     ws = None
     for name in JEEVES_CUSTOMER_OS_SHEETS:
@@ -278,9 +289,9 @@ def load_jeves_customer_ordering(path: Path) -> pl.DataFrame:
     values = []
     for row in range(JEEVES_CUSTOMER_OS_DATA_ROW, ws.max_row + 1):
         v = ws.cell(row=row, column=1).value
-        if v is None or (isinstance(v, str) and not v.strip()):
-            continue
-        values.append(str(v).strip())
+        code = _jeves_os_customer_code_raw(v)
+        if code is not None:
+            values.append(code)
     wb.close()
     return pl.DataFrame({KEY_COL: pl.Series(values).cast(pl.Utf8)})
 
@@ -396,6 +407,10 @@ def write_reconciliation_excel_5_tabs(
         ws.append(df.columns)
         for row in df.iter_rows(named=False):
             ws.append(list(row))
+        # Customer OS: force Code column (A) as text so Excel keeps leading zeros (e.g. 0005)
+        if sheet_name == SHEET_CUSTOMER_OS and df.height > 0:
+            for row_idx in range(2, ws.max_row + 1):
+                ws.cell(row=row_idx, column=1).number_format = "@"
     wb.save(path)
 
 
