@@ -15,8 +15,8 @@ CT/*.xlsb
 STIBO/*.xlsx
 Mapping_Ekofisk.xlsx
 
-# Output files - Range_Reconciliation is allowed in repo
-# Range_Reconciliation_*.xlsx  # Commented out - we want to push this to GitHub
+# Output files
+output/
 Analyse*.xlsx
 
 # Fichiers de configuration système

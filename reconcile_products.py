@@ -7,34 +7,38 @@ import hashlib
 import json
 
 def load_jeves_data(file_path: str) -> pl.DataFrame:
-    """Load JEEVES Product data from sheet 3-STIBO-TRACKER
-    Headers row 1, data from row 2+, column A = SUPC
+    """Load JEEVES Product data from sheet 2-EXCELMASTER.
+
+    Product codes are read from column A starting at A3 (row 3).
     """
     wb = load_workbook(file_path, data_only=True)
-    # Use sheet 3-STIBO-TRACKER
-    ws = wb["3-STIBO-TRACKER"]
-    
-    # Read headers from row 1
-    headers = [cell.value for cell in ws[1] if cell.value is not None]
-    
-    # Read data from row 2
-    data = []
-    for row in ws.iter_rows(min_row=2, values_only=True):
-        if any(cell is not None for cell in row):
-            data.append(row[:len(headers)])
-    
-    # Create DataFrame without strict schema to let Polars infer types
-    if data:
-        return pl.DataFrame(data, schema=headers, orient="row", infer_schema_length=None)
-    else:
-        return pl.DataFrame(schema=headers)
+    ws = wb["2-EXCELMASTER"]
+
+    data: list[tuple[object]] = []
+    for (val,) in ws.iter_rows(min_row=3, min_col=1, max_col=1, values_only=True):
+        if val is None:
+            continue
+        if isinstance(val, str) and not val.strip():
+            continue
+        data.append((val,))
+
+    if not data:
+        return pl.DataFrame(schema=["SUPC"])
+
+    return pl.DataFrame(data, schema=["SUPC"], orient="row", infer_schema_length=None)
 
 def load_ct_data(file_path: str) -> pl.DataFrame:
     """Load CT Ekofisk data
     Headers row 6, data starts at B7 (first SUPC)
     """
-    from pyxlsb import open_workbook
-    
+    if file_path.endswith('.xlsb'):
+        try:
+            from pyxlsb import open_workbook
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError(
+                "Reading .xlsb files requires pyxlsb. Install with: pip install pyxlsb"
+            ) from None
+
     # Detect file format
     if file_path.endswith('.xlsb'):
         # Read .xlsb file
@@ -130,21 +134,39 @@ def load_ct_data(file_path: str) -> pl.DataFrame:
 
 def load_stibo_data(file_path: str) -> pl.DataFrame:
     """Load STIBO Product data
-    Headers row 1, data from row 2+
+
+    Headers are on row 1. Product codes are read from column C (SUPC) starting at C2.
     """
     wb = load_workbook(file_path, data_only=True)
     ws = wb.active
-    
-    # Read headers from row 1
-    headers = [cell.value for cell in ws[1] if cell.value is not None]
-    
-    # Read data from row 2
-    data = []
-    for row in ws.iter_rows(min_row=2, values_only=True):
-        if any(cell is not None for cell in row):
-            data.append(row[:len(headers)])
-    
-    return pl.DataFrame(data, schema=headers, orient="row")
+
+    supc_col_idx = None
+    for idx, cell in enumerate(ws[1], start=1):
+        if cell.value is None:
+            continue
+        if str(cell.value).strip().upper() == "SUPC":
+            supc_col_idx = idx
+            break
+    if supc_col_idx is None:
+        supc_col_idx = 3  # Column C
+
+    data: list[tuple[object]] = []
+    for (val,) in ws.iter_rows(
+        min_row=2,
+        min_col=supc_col_idx,
+        max_col=supc_col_idx,
+        values_only=True,
+    ):
+        if val is None:
+            continue
+        if isinstance(val, str) and not val.strip():
+            continue
+        data.append((val,))
+
+    if not data:
+        return pl.DataFrame(schema=["SUPC"])
+
+    return pl.DataFrame(data, schema=["SUPC"], orient="row", infer_schema_length=None)
 
 
 def clean_product_code(value):
@@ -242,6 +264,17 @@ def create_range_reconciliation(jeves_df: pl.DataFrame, ct_df: pl.DataFrame, sti
     
     return reconciliation
 
+def _find_first_file(directory: Path, needle: str) -> Path | None:
+    """First file in directory whose name contains needle (case-insensitive)."""
+    if not directory.exists() or not directory.is_dir():
+        return None
+    needle_l = needle.lower()
+    for f in sorted(directory.iterdir()):
+        if f.is_file() and needle_l in f.name.lower():
+            return f
+    return None
+
+
 def get_file_hash(file_path: str) -> str:
     """Calculate MD5 hash of a file to detect changes"""
     hash_md5 = hashlib.md5()
@@ -253,108 +286,125 @@ def get_file_hash(file_path: str) -> str:
     except FileNotFoundError:
         return None
 
-def get_input_files_hash() -> str:
-    """Calculate combined hash of all input files"""
-    input_files = [
-        "JEEVES/RECONC Product Data 2026-02-04.xlsx",
-        "CT/P1 Data Cleansing - Product Ekofisk.xlsb",
-        "STIBO/extract_stibo_all_products.xlsx"
-    ]
-    
+def _resolve_product_paths(date_folder: str) -> tuple[Path | None, Path | None, Path | None]:
+    """Resolve JEEVES, CT, STIBO Product file paths (dated folder or root). Returns (jeves_path, ct_path, stibo_path)."""
+    date_folder = date_folder.strip()
+    jeves_dir = Path("JEEVES") / date_folder if (Path("JEEVES") / date_folder).is_dir() else Path("JEEVES")
+    ct_dir = Path("CT") / date_folder if (Path("CT") / date_folder).is_dir() else Path("CT")
+    stibo_dir = Path("STIBO") / date_folder
+
+    jeves_path = _find_first_file(jeves_dir, "Product") or _find_first_file(Path("JEEVES"), "Product")
+    ct_path = _find_first_file(ct_dir, "Product") or _find_first_file(Path("CT"), "Product")
+    stibo_path = stibo_dir / f"Products_{date_folder}.xlsx" if stibo_dir.is_dir() else None
+    if stibo_path is None or not stibo_path.exists():
+        alt = list(Path(stibo_dir).glob("Products*.xlsx")) if stibo_dir.is_dir() else []
+        stibo_path = alt[0] if alt else None
+    if stibo_path is None or not stibo_path.exists():
+        stibo_path = Path("STIBO/extract_stibo_all_products.xlsx") if Path("STIBO/extract_stibo_all_products.xlsx").exists() else None
+    return jeves_path, ct_path, stibo_path
+
+
+def get_input_files_hash(date_folder: str = "2302") -> str:
+    """Calculate combined hash of all input files (JEEVES, CT, STIBO from dated folder or root)."""
+    jeves_path, ct_path, stibo_path = _resolve_product_paths(date_folder)
+    input_files = [str(p) for p in (jeves_path, ct_path, stibo_path) if p is not None and p.exists()]
+    if len(input_files) < 3:
+        return None
     hashes = []
     for file_path in input_files:
         file_hash = get_file_hash(file_path)
         if file_hash:
             hashes.append(f"{file_path}:{file_hash}")
         else:
-            # If a file doesn't exist, return None to force creation of new file
             return None
-    
-    # Create combined hash
     combined = "|".join(hashes)
     return hashlib.md5(combined.encode()).hexdigest()
 
-def find_existing_output_files() -> dict:
-    """Find existing output files"""
+def find_existing_output_files(output_dir: Path) -> dict:
+    """Find existing output files in output_dir."""
     files = {}
-    
-    # Search for Range Reconciliation
-    range_files = list(Path(".").glob("Range_Reconciliation_*.xlsx"))
+    range_files = list(output_dir.glob("Range_Reconciliation_*.xlsx"))
     if range_files:
         files["range"] = max(range_files, key=lambda x: x.stat().st_mtime)
-    
     return files
 
-def save_hash_info(input_hash: str, output_file: Path):
-    """Save input hash with output file name"""
-    hash_file = Path(".reconciliation_hash.json")
-    hash_info = {
-        "input_hash": input_hash,
-        "output_file": str(output_file)
-    }
+
+def save_hash_info(input_hash: str, output_file: Path, output_dir: Path) -> None:
+    """Save input hash with output file name in output_dir."""
+    hash_file = output_dir / ".reconciliation_hash.json"
+    hash_info = {"input_hash": input_hash, "output_file": str(output_file)}
     with open(hash_file, "w") as f:
         json.dump(hash_info, f, indent=2)
 
-def load_hash_info() -> dict:
-    """Load previous hash"""
-    hash_file = Path(".reconciliation_hash.json")
+
+def load_hash_info(output_dir: Path) -> dict | None:
+    """Load previous hash from output_dir."""
+    hash_file = output_dir / ".reconciliation_hash.json"
     if hash_file.exists():
         try:
             with open(hash_file, "r") as f:
                 return json.load(f)
-        except:
+        except Exception:
             return None
     return None
 
-def main():
-    print("Loading data...")
-    
-    # Check if input files have changed
-    current_input_hash = get_input_files_hash()
-    previous_hash_info = load_hash_info()
-    
-    # Determine output file name
-    if current_input_hash and previous_hash_info and previous_hash_info.get("input_hash") == current_input_hash:
-        # Input files are identical, overwrite existing file
-        existing_files = find_existing_output_files()
-        output_file_range = existing_files.get("range", Path("Range_Reconciliation.xlsx"))
-        print("[INFO] Input files identical - overwriting existing file")
-    else:
-        # Files have changed or first run, create new file with timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file_range = Path(f"Range_Reconciliation_{timestamp}.xlsx")
-        if current_input_hash:
-            print("[INFO] Input files modified - creating new file")
-        else:
-            print("[WARN] Some input files missing - creating new file")
-    
-    # Load data
-    jeves_df = load_jeves_data("JEEVES/RECONC Product Data 2026-02-04.xlsx")
-    print(f"JEEVES: {len(jeves_df)} products loaded")
-    
-    ct_df = load_ct_data("CT/P1 Data Cleansing - Product Ekofisk.xlsb")
-    print(f"CT: {len(ct_df)} products loaded")
-    
-    stibo_df = load_stibo_data("STIBO/extract_stibo_all_products.xlsx")
-    print(f"STIBO: {len(stibo_df)} products loaded")
-    
-    # Range Reconciliation: List all products with CT/JEEVES/STIBO
-    print("\nCreating Range Reconciliation...")
+
+def main(
+    date_folder: str = "2302",
+    output_dir: Path | None = None,
+    write_range_file: bool = True,
+) -> pl.DataFrame:
+    """Run Product (Range) reconciliation. Sources: JEEVES/{date}/, CT/{date}/, STIBO/{date}/.
+    Returns the Product reconciliation DataFrame.
+    If write_range_file=True, also writes Range_Reconciliation_*.xlsx to output_dir (default: current directory)."""
+    date_folder = date_folder.strip()
+    out = output_dir if output_dir is not None else Path(".")
+    out.mkdir(parents=True, exist_ok=True)
+    print("  Chargement des sources...")
+
+    jeves_path, ct_path, stibo_path = _resolve_product_paths(date_folder)
+    if jeves_path is None:
+        raise FileNotFoundError(f"JEEVES Product file not found in JEEVES/{date_folder}/ nor JEEVES/.")
+    if ct_path is None:
+        raise FileNotFoundError(f"CT Product file not found in CT/{date_folder}/ nor CT/.")
+    if stibo_path is None:
+        raise FileNotFoundError(f"STIBO Product file not found in STIBO/{date_folder}/ nor STIBO/extract_stibo_all_products.xlsx.")
+
+    print("  Lecture:")
+    jeves_df = load_jeves_data(str(jeves_path))
+    print(f"    - JEEVES:  {len(jeves_df)} produits")
+    ct_df = load_ct_data(str(ct_path))
+    print(f"    - CT:      {len(ct_df)} produits")
+    stibo_df = load_stibo_data(str(stibo_path))
+    print(f"    - STIBO:   {len(stibo_df)} produits")
+
+    print("  Réconciliation (présence CT / JEEVES / STIBO)...")
     range_reconciliation = create_range_reconciliation(jeves_df, ct_df, stibo_df)
-    print(f"Total unique products: {len(range_reconciliation)}")
-    
-    # Generate Excel file
-    print(f"\nGenerating Excel file...")
-    
-    # Range Reconciliation file
-    range_reconciliation.write_excel(output_file_range)
-    print(f"[OK] {output_file_range}")
-    
-    # Save hash for next run
-    if current_input_hash:
-        save_hash_info(current_input_hash, output_file_range)
-    
-    print("\nDone!")
+    print(f"  Total produits uniques: {len(range_reconciliation)}")
+
+    if write_range_file:
+        current_input_hash = get_input_files_hash(date_folder)
+        previous_hash_info = load_hash_info(out)
+        if current_input_hash and previous_hash_info and previous_hash_info.get("input_hash") == current_input_hash:
+            existing_files = find_existing_output_files(out)
+            output_file_range = existing_files.get("range", out / "Range_Reconciliation.xlsx")
+            print("  Fichiers sources inchangés -> écrasement du fichier existant")
+        else:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_file_range = out / f"Range_Reconciliation_{timestamp}.xlsx"
+            if current_input_hash:
+                print("  Fichiers sources modifiés -> nouveau fichier avec horodatage")
+            else:
+                print("  Attention: certains fichiers sources manquants -> nouveau fichier")
+        range_reconciliation.write_excel(output_file_range)
+        print(f"  -> Écrit: {output_file_range}")
+        if current_input_hash:
+            save_hash_info(current_input_hash, output_file_range, out)
+    else:
+        print("  -> Product data prêt pour intégration dans Reconciliation_{market}.xlsx")
+
+    return range_reconciliation
+
 
 if __name__ == "__main__":
-    main()
+    main(date_folder="2302", write_range_file=True)
