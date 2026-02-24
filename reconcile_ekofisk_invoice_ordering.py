@@ -318,12 +318,12 @@ def _os_customer_code_to_str(val) -> str:
     return s
 
 
-def _normalize_os_customer_codes(df: pl.DataFrame) -> pl.DataFrame:
-    """Apply string comparison for OS Customer: numeric codes become zero-padded (e.g. 5 -> '0005')."""
+def _normalize_os_codes(df: pl.DataFrame) -> pl.DataFrame:
+    """Compare OS codes as strings; preserve leading zeros (e.g. 5 -> '0005'). Used for Vendor OS and Customer OS."""
     if df.height == 0:
         return df
     codes = [_os_customer_code_to_str(v) for v in df[KEY_COL].to_list()]
-    return pl.DataFrame({KEY_COL: codes}).filter(
+    return pl.DataFrame({KEY_COL: pl.Series(codes).cast(pl.Utf8)}).filter(
         pl.col(KEY_COL).is_not_null() & (pl.col(KEY_COL) != "")
     )
 
@@ -503,10 +503,13 @@ def run_invoice_ordering_reconciliation(
     jeves_vendor_ord = _normalize(load_jeves_vendor_ordering(jeves_vendor_file))
     jeves_customer_ord = _normalize(load_jeves_customer_ordering(jeves_customer_file))
 
-    # OS Customer only: compare codes as strings with leading zeros (e.g. "0005" not "5")
-    stibo_customer_ord = _normalize_os_customer_codes(stibo_customer_ord)
-    ct_customer_ord = _normalize_os_customer_codes(ct_customer_ord)
-    jeves_customer_ord = _normalize_os_customer_codes(jeves_customer_ord)
+    # OS (Vendor + Customer): compare codes as strings with leading zeros (e.g. "0005" not "5")
+    stibo_vendor_ord = _normalize_os_codes(stibo_vendor_ord)
+    ct_vendor_ord = _normalize_os_codes(ct_vendor_ord)
+    jeves_vendor_ord = _normalize_os_codes(jeves_vendor_ord)
+    stibo_customer_ord = _normalize_os_codes(stibo_customer_ord)
+    ct_customer_ord = _normalize_os_codes(ct_customer_ord)
+    jeves_customer_ord = _normalize_os_codes(jeves_customer_ord)
 
     rec_invoice = build_reconciliation(
         stibo_vendor_inv, stibo_customer_inv, ct_vendor_inv, ct_customer_inv,
