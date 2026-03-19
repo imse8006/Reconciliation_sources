@@ -1,7 +1,8 @@
 """
-Invoice and Ordering-Shipping reconciliation (STIBO, CT, JEEVES).
-Compares Vendor and Customer across sources. Supports market filter (Ekofisk, Fresh, Classic).
-Output: Reconciliation_{market}.xlsx with sheets Invoice and Ordering-Shipping.
+Invoice and Ordering-Shipping reconciliation (STIBO, CT, local ERP).
+Compares Vendor and Customer across sources. Supports any market defined in markets.json.
+Output: Reconciliation_{market}.xlsx with 5 sheets.
+ERP files are read from ERP/{market}/{date}/.
 """
 import polars as pl
 from pathlib import Path
@@ -10,13 +11,13 @@ from openpyxl import load_workbook, Workbook
 # Paths
 STIBO_DIR = Path("STIBO")
 CT_DIR = Path("CT")
-JEEVES_DIR = Path("JEEVES")
+ERP_DIR = Path("ERP")
 
 # File patterns
 CT_VENDOR_NEEDLE = "Vendor"
 CT_CUSTOMER_NEEDLE = "Customer"
-JEEVES_VENDOR_NEEDLE = "Vendor"
-JEEVES_CUSTOMER_NEEDLE = "Customer"
+ERP_VENDOR_NEEDLE = "Vendor"
+ERP_CUSTOMER_NEEDLE = "Customer"
 
 # CT: sheet names and data start
 CT_SHEET_INVOICE = "Invoice"
@@ -26,7 +27,7 @@ CT_VENDOR_OS_COL = 4  # Column D for Vendor Ordering-Shipping
 CT_CUSTOMER_OS_COL = 4  # Column D for Customer Ordering-Shipping (D8+)
 CT_FIRST_ROW = 8
 
-# JEEVES: Customer = headers row 2, data row 3+, column A. Vendor = headers row 1, column "SUVC -Invoice"
+# Jeeves: Customer = headers row 2, data row 3+, column A. Vendor = headers row 1, column "SUVC -Invoice"
 JEEVES_CUSTOMER_HEADER_ROW = 2
 JEEVES_CUSTOMER_DATA_ROW = 3
 JEEVES_VENDOR_HEADER_ROW = 1
@@ -333,18 +334,19 @@ def build_reconciliation(
     stibo_customer: pl.DataFrame,
     ct_vendor: pl.DataFrame,
     ct_customer: pl.DataFrame,
-    jeves_vendor: pl.DataFrame,
-    jeves_customer: pl.DataFrame,
+    erp_vendor: pl.DataFrame,
+    erp_customer: pl.DataFrame,
+    erp_name: str,
 ) -> pl.DataFrame:
-    """Build reconciliation table: all unique codes with X per source (6 sources)."""
+    """Build reconciliation table: all unique codes with X per source."""
     key = KEY_COL
     sets = {
         "stibo_v": set(stibo_vendor[key].to_list()),
         "stibo_c": set(stibo_customer[key].to_list()),
         "ct_v": set(ct_vendor[key].to_list()),
         "ct_c": set(ct_customer[key].to_list()),
-        "jeves_v": set(jeves_vendor[key].to_list()),
-        "jeves_c": set(jeves_customer[key].to_list()),
+        "erp_v": set(erp_vendor[key].to_list()),
+        "erp_c": set(erp_customer[key].to_list()),
     }
     all_codes = sorted(set.union(*sets.values()))
     return pl.DataFrame({
@@ -353,8 +355,8 @@ def build_reconciliation(
         "STIBO_Customer": ["X" if c in sets["stibo_c"] else "" for c in all_codes],
         "CT_Vendor": ["X" if c in sets["ct_v"] else "" for c in all_codes],
         "CT_Customer": ["X" if c in sets["ct_c"] else "" for c in all_codes],
-        "JEEVES_Vendor": ["X" if c in sets["jeves_v"] else "" for c in all_codes],
-        "JEEVES_Customer": ["X" if c in sets["jeves_c"] else "" for c in all_codes],
+        f"{erp_name}_Vendor": ["X" if c in sets["erp_v"] else "" for c in all_codes],
+        f"{erp_name}_Customer": ["X" if c in sets["erp_c"] else "" for c in all_codes],
     })
 
 
@@ -365,18 +367,18 @@ SHEET_VENDOR_OS = "Vendor OS"
 SHEET_CUSTOMER_INVOICE = "Customer Invoice"
 SHEET_CUSTOMER_OS = "Customer OS"
 
-VENDOR_COLS = ["Code", "STIBO_Vendor", "CT_Vendor", "JEEVES_Vendor"]
-CUSTOMER_COLS = ["Code", "STIBO_Customer", "CT_Customer", "JEEVES_Customer"]
 
-
-def _sheet_from_full(full_df: pl.DataFrame, vendor: bool) -> pl.DataFrame:
-    """Extract Vendor or Customer view: only rows where at least one source (Vendor or Customer) has X, then Code + 3 source columns."""
-    src_cols = ["STIBO_Vendor", "CT_Vendor", "JEEVES_Vendor"] if vendor else ["STIBO_Customer", "CT_Customer", "JEEVES_Customer"]
+def _sheet_from_full(full_df: pl.DataFrame, vendor: bool, erp_name: str) -> pl.DataFrame:
+    """Extract Vendor or Customer view: rows where at least one source has X, Code + 3 source columns."""
+    src_cols = (
+        ["STIBO_Vendor", "CT_Vendor", f"{erp_name}_Vendor"]
+        if vendor
+        else ["STIBO_Customer", "CT_Customer", f"{erp_name}_Customer"]
+    )
     available_src = [c for c in src_cols if c in full_df.columns]
     if not available_src:
         out_cols = [KEY_COL] if KEY_COL in full_df.columns else full_df.columns[:1]
         return full_df.select(out_cols)
-    # Keep only rows where at least one of the relevant sources has "X"
     mask = pl.lit(False)
     for c in available_src:
         mask = mask | (pl.col(c) == "X")
@@ -390,17 +392,21 @@ def write_reconciliation_excel_5_tabs(
     rec_invoice: pl.DataFrame,
     rec_ordering: pl.DataFrame,
     product_df: pl.DataFrame | None = None,
+    erp_name: str = "ERP",
 ) -> None:
     """Write Reconciliation_{market}.xlsx with 5 sheets: Product, Vendor Invoice, Vendor OS, Customer Invoice, Customer OS."""
     wb = Workbook()
     del wb["Sheet"]
 
+    empty_product = pl.DataFrame(
+        {"ProductCode": [], "CT": [], erp_name: [], "STIBO": [], "Absent_from": []}
+    )
     sheets = [
-        (SHEET_PRODUCT, product_df if product_df is not None and product_df.height > 0 else pl.DataFrame({"ProductCode": [], "CT": [], "JEEVES": [], "STIBO": [], "Absent_from": []})),
-        (SHEET_VENDOR_INVOICE, _sheet_from_full(rec_invoice, vendor=True)),
-        (SHEET_VENDOR_OS, _sheet_from_full(rec_ordering, vendor=True)),
-        (SHEET_CUSTOMER_INVOICE, _sheet_from_full(rec_invoice, vendor=False)),
-        (SHEET_CUSTOMER_OS, _sheet_from_full(rec_ordering, vendor=False)),
+        (SHEET_PRODUCT, product_df if product_df is not None and product_df.height > 0 else empty_product),
+        (SHEET_VENDOR_INVOICE, _sheet_from_full(rec_invoice, vendor=True, erp_name=erp_name)),
+        (SHEET_VENDOR_OS, _sheet_from_full(rec_ordering, vendor=True, erp_name=erp_name)),
+        (SHEET_CUSTOMER_INVOICE, _sheet_from_full(rec_invoice, vendor=False, erp_name=erp_name)),
+        (SHEET_CUSTOMER_OS, _sheet_from_full(rec_ordering, vendor=False, erp_name=erp_name)),
     ]
     for sheet_name, df in sheets:
         ws = wb.create_sheet(sheet_name)
@@ -414,6 +420,30 @@ def write_reconciliation_excel_5_tabs(
     wb.save(path)
 
 
+def _load_erp_vendor_invoice(path: Path, erp_name: str) -> pl.DataFrame:
+    if erp_name.lower() == "jeeves":
+        return load_jeves_vendor_invoice(path)
+    raise NotImplementedError(f"No Vendor Invoice loader for ERP '{erp_name}'.")
+
+
+def _load_erp_vendor_ordering(path: Path, erp_name: str) -> pl.DataFrame:
+    if erp_name.lower() == "jeeves":
+        return load_jeves_vendor_ordering(path)
+    raise NotImplementedError(f"No Vendor OS loader for ERP '{erp_name}'.")
+
+
+def _load_erp_customer_invoice(path: Path, erp_name: str) -> pl.DataFrame:
+    if erp_name.lower() == "jeeves":
+        return load_jeves_customer_invoice(path)
+    raise NotImplementedError(f"No Customer Invoice loader for ERP '{erp_name}'.")
+
+
+def _load_erp_customer_ordering(path: Path, erp_name: str) -> pl.DataFrame:
+    if erp_name.lower() == "jeeves":
+        return load_jeves_customer_ordering(path)
+    raise NotImplementedError(f"No Customer OS loader for ERP '{erp_name}'.")
+
+
 def run_invoice_ordering_reconciliation(
     market: str,
     output_dir: Path,
@@ -421,14 +451,18 @@ def run_invoice_ordering_reconciliation(
     date_folder: str = "2302",
 ) -> Path:
     """Run Invoice + Ordering-Shipping reconciliation for one market. Returns output path.
-    Sources: STIBO/{date_folder}/, CT/{date_folder}/, JEEVES/{date_folder}/ (fallback to root if no dated dir)."""
+    Sources: STIBO/{date_folder}/, CT/{date_folder}/, ERP/{market}/{date_folder}/."""
+    from market_config import get_erp_name
+    erp_name = get_erp_name(market)
+
     market_filter = market if market else None
     date_folder = date_folder.strip()
 
-    # Dated dirs: prefer STIBO/2302/, CT/2302/, JEEVES/2302/; fallback to root
+    # Dated dirs: prefer dated subdir, fallback to root
     stibo_date_dir = STIBO_DIR / date_folder
     ct_search_dir = CT_DIR / date_folder if (CT_DIR / date_folder).is_dir() else CT_DIR
-    jeves_search_dir = JEEVES_DIR / date_folder if (JEEVES_DIR / date_folder).is_dir() else JEEVES_DIR
+    erp_base = ERP_DIR / erp_name
+    erp_search_dir = erp_base / date_folder if (erp_base / date_folder).is_dir() else erp_base
 
     # STIBO: files in STIBO/{date}/ e.g. Invoice_Vendors_2302.xlsx
     vendor_extract = STIBO_VENDOR_EXTRACT_ROOT
@@ -490,40 +524,46 @@ def run_invoice_ordering_reconciliation(
     ct_customer_inv = _normalize(load_ct_column(ct_customer_file, CT_SHEET_INVOICE))
     ct_customer_ord = _normalize(load_ct_column(ct_customer_file, CT_SHEET_ORDERING, col=CT_CUSTOMER_OS_COL))
 
-    # JEEVES: search in dated folder or root
-    jeves_vendor_file = find_first_file(jeves_search_dir, JEEVES_VENDOR_NEEDLE, market=None)
-    jeves_customer_file = find_first_file(jeves_search_dir, JEEVES_CUSTOMER_NEEDLE, market=None)
-    if not jeves_vendor_file:
-        raise FileNotFoundError(f"JEEVES Vendor file not found in {jeves_search_dir.absolute()}. Expected a file with 'Vendor' in name.")
-    if not jeves_customer_file:
-        raise FileNotFoundError(f"JEEVES Customer file not found in {jeves_search_dir.absolute()}. Expected a file with 'Customer' in name.")
+    # ERP: search in ERP/{market}/{date}/ or ERP/{market}/
+    erp_vendor_file = find_first_file(erp_search_dir, ERP_VENDOR_NEEDLE, market=None)
+    erp_customer_file = find_first_file(erp_search_dir, ERP_CUSTOMER_NEEDLE, market=None)
+    if not erp_vendor_file:
+        raise FileNotFoundError(
+            f"{erp_name} Vendor file not found in {erp_search_dir.absolute()}. "
+            f"Expected a file with 'Vendor' in name."
+        )
+    if not erp_customer_file:
+        raise FileNotFoundError(
+            f"{erp_name} Customer file not found in {erp_search_dir.absolute()}. "
+            f"Expected a file with 'Customer' in name."
+        )
 
-    jeves_vendor_inv = _normalize(load_jeves_vendor_invoice(jeves_vendor_file))
-    jeves_customer_inv = _normalize(load_jeves_customer_invoice(jeves_customer_file))
-    jeves_vendor_ord = _normalize(load_jeves_vendor_ordering(jeves_vendor_file))
-    jeves_customer_ord = _normalize(load_jeves_customer_ordering(jeves_customer_file))
+    erp_vendor_inv = _normalize(_load_erp_vendor_invoice(erp_vendor_file, erp_name))
+    erp_customer_inv = _normalize(_load_erp_customer_invoice(erp_customer_file, erp_name))
+    erp_vendor_ord = _normalize(_load_erp_vendor_ordering(erp_vendor_file, erp_name))
+    erp_customer_ord = _normalize(_load_erp_customer_ordering(erp_customer_file, erp_name))
 
     # OS (Vendor + Customer): compare codes as strings with leading zeros (e.g. "0005" not "5")
     stibo_vendor_ord = _normalize_os_codes(stibo_vendor_ord)
     ct_vendor_ord = _normalize_os_codes(ct_vendor_ord)
-    jeves_vendor_ord = _normalize_os_codes(jeves_vendor_ord)
+    erp_vendor_ord = _normalize_os_codes(erp_vendor_ord)
     stibo_customer_ord = _normalize_os_codes(stibo_customer_ord)
     ct_customer_ord = _normalize_os_codes(ct_customer_ord)
-    jeves_customer_ord = _normalize_os_codes(jeves_customer_ord)
+    erp_customer_ord = _normalize_os_codes(erp_customer_ord)
 
     rec_invoice = build_reconciliation(
         stibo_vendor_inv, stibo_customer_inv, ct_vendor_inv, ct_customer_inv,
-        jeves_vendor_inv, jeves_customer_inv,
+        erp_vendor_inv, erp_customer_inv, erp_name,
     )
     rec_ordering = build_reconciliation(
         stibo_vendor_ord, stibo_customer_ord, ct_vendor_ord, ct_customer_ord,
-        jeves_vendor_ord, jeves_customer_ord,
+        erp_vendor_ord, erp_customer_ord, erp_name,
     )
 
-    out_path = output_dir / f"Reconciliation_{market or 'Ekofisk'}.xlsx"
-    write_reconciliation_excel_5_tabs(out_path, rec_invoice, rec_ordering, product_df=product_df)
-    print(f"  Market: {market or 'Ekofisk'}")
-    print(f"  Fichiers lus: STIBO (Vendor/Customer), CT ({ct_vendor_file.name} / {ct_customer_file.name}), JEEVES ({jeves_vendor_file.name} / {jeves_customer_file.name})")
+    out_path = output_dir / f"Reconciliation_{market}.xlsx"
+    write_reconciliation_excel_5_tabs(out_path, rec_invoice, rec_ordering, product_df=product_df, erp_name=erp_name)
+    print(f"  Market: {market} (ERP: {erp_name})")
+    print(f"  Fichiers lus: STIBO (Vendor/Customer), CT ({ct_vendor_file.name} / {ct_customer_file.name}), {erp_name} ({erp_vendor_file.name} / {erp_customer_file.name})")
     print("  Onglets generes: Product | Vendor Invoice | Vendor OS | Customer Invoice | Customer OS")
     print(f"  Lignes: Invoice={rec_invoice.height}, Ordering-Shipping={rec_ordering.height}")
     print(f"  -> ecrit: {out_path}")

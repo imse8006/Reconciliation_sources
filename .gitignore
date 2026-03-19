@@ -10,10 +10,10 @@ ENV/
 .venv
 
 # Fichiers de données (ne pas versionner les fichiers Excel de données)
-JEEVES/*.xlsx
+ERP/
 CT/*.xlsb
 STIBO/*.xlsx
-Mapping_Ekofisk.xlsx
+Mapping/
 
 # Output files (allow output/2302/Reconciliation_*.xlsx so Streamlit can load after clone)
 output/*

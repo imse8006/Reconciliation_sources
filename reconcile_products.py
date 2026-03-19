@@ -1,4 +1,5 @@
-"""Product reconciliation script between JEEVES and Ekofisk CT"""
+"""Product (Range) reconciliation: STIBO (MDM) vs CT vs local ERP.
+ERP files are read from ERP/{market}/{date}/. ERP name is read from markets.json."""
 import polars as pl
 from openpyxl import load_workbook
 from pathlib import Path
@@ -184,84 +185,95 @@ def clean_product_code(value):
     except (ValueError, TypeError):
         return str_val.strip()
 
-def create_range_reconciliation(jeves_df: pl.DataFrame, ct_df: pl.DataFrame, stibo_df: pl.DataFrame) -> pl.DataFrame:
-    """Range Reconciliation: List all products with CT/JEEVES/STIBO columns and X marks"""
-    # Identify product code column in each source
-    # JEEVES: SUPC (from sheet 3-STIBO-TRACKER)
-    # CT: SUPC
-    # STIBO: SUPC
-    
-    # Find SUPC column in CT
-    ct_product_col = None
-    if "SUPC" in ct_df.columns:
-        ct_product_col = "SUPC"
-    else:
-        ct_product_col = ct_df.columns[0]
-    
-    # Find SUPC column in STIBO
+def load_prophet_product_data(file_path: str) -> pl.DataFrame:
+    """Load Prophet Product data. Headers on row 2, product code column = 'FD Product Code'."""
+    wb = load_workbook(file_path, data_only=True)
+    ws = wb.worksheets[0]
+
+    # Find 'FD Product Code' column in row 2
+    headers = {ws.cell(2, c).value: c for c in range(1, ws.max_column + 1)}
+    col_idx = headers.get("FD Product Code")
+    if col_idx is None:
+        raise ValueError(
+            f"Column 'FD Product Code' not found in row 2 of {file_path}. "
+            f"Available: {[h for h in headers if h]}"
+        )
+
+    data = []
+    for row in range(3, ws.max_row + 1):
+        v = ws.cell(row, col_idx).value
+        if v is None or (isinstance(v, str) and not v.strip()):
+            continue
+        data.append((v,))
+    wb.close()
+
+    if not data:
+        return pl.DataFrame(schema=["SUPC"])
+    return pl.DataFrame(data, schema=["SUPC"], orient="row", infer_schema_length=None)
+
+
+def _load_erp_product_data(file_path: str, erp_name: str) -> pl.DataFrame:
+    """Dispatch to the right ERP product loader based on erp_name."""
+    name = erp_name.lower()
+    if name == "jeeves":
+        return load_jeves_data(file_path)
+    if name == "prophet":
+        return load_prophet_product_data(file_path)
+    raise NotImplementedError(
+        f"No product loader implemented for ERP '{erp_name}'. "
+        f"Add one in reconcile_products.py."
+    )
+
+
+def create_range_reconciliation(
+    erp_df: pl.DataFrame,
+    ct_df: pl.DataFrame,
+    stibo_df: pl.DataFrame,
+    erp_name: str = "ERP",
+) -> pl.DataFrame:
+    """Range Reconciliation: list all products with CT / ERP / STIBO columns and X marks."""
+    ct_product_col = "SUPC" if "SUPC" in ct_df.columns else ct_df.columns[0]
     stibo_product_col = "SUPC" if "SUPC" in stibo_df.columns else stibo_df.columns[0]
-    
-    # Create unique product lists from each source
-    # Convert to string and clean format (remove .0)
-    # JEEVES now uses SUPC from sheet 3-STIBO-TRACKER
-    jeves_product_col = "SUPC" if "SUPC" in jeves_df.columns else jeves_df.columns[0]
-    jeves_products = jeves_df.select([
-        pl.col(jeves_product_col)
-    ]).unique()
-    
-    ct_products = ct_df.select([
-        pl.col(ct_product_col)
-    ]).unique()
-    
-    stibo_products = stibo_df.select([
-        pl.col(stibo_product_col)
-    ]).unique()
-    
-    # Clean and convert to proper string
+    erp_product_col = "SUPC" if "SUPC" in erp_df.columns else erp_df.columns[0]
+
     def clean_and_convert(df, col_name):
-        return df.with_columns([
+        return df.select([pl.col(col_name)]).unique().with_columns([
             pl.col(col_name).map_elements(
                 lambda x: clean_product_code(x),
-                return_dtype=pl.Utf8
+                return_dtype=pl.Utf8,
             ).alias("ProductCode")
         ]).select("ProductCode").unique()
-    
-    jeves_clean = clean_and_convert(jeves_products, jeves_product_col)
-    ct_clean = clean_and_convert(ct_products, ct_product_col)
-    stibo_clean = clean_and_convert(stibo_products, stibo_product_col)
-    
-    # Combine all unique products
-    all_products = pl.concat([jeves_clean, ct_clean, stibo_clean]).unique("ProductCode")
-    
-    # Create lists for verification
-    jeves_list = jeves_clean.to_series().to_list()
+
+    erp_clean = clean_and_convert(erp_df, erp_product_col)
+    ct_clean = clean_and_convert(ct_df, ct_product_col)
+    stibo_clean = clean_and_convert(stibo_df, stibo_product_col)
+
+    all_products = pl.concat([erp_clean, ct_clean, stibo_clean]).unique("ProductCode")
+
+    erp_list = erp_clean.to_series().to_list()
     ct_list = ct_clean.to_series().to_list()
     stibo_list = stibo_clean.to_series().to_list()
-    
-    # Create DataFrame with presence columns
+
+    erp_present_col = f"{erp_name}_present"
+
     reconciliation = all_products.with_columns([
         pl.col("ProductCode").is_in(ct_list).alias("CT_present"),
-        pl.col("ProductCode").is_in(jeves_list).alias("JEEVES_present"),
-        pl.col("ProductCode").is_in(stibo_list).alias("STIBO_present")
+        pl.col("ProductCode").is_in(erp_list).alias(erp_present_col),
+        pl.col("ProductCode").is_in(stibo_list).alias("STIBO_present"),
     ]).with_columns([
-        # Replace True with "X", False with empty string
         pl.when(pl.col("CT_present")).then(pl.lit("X")).otherwise(pl.lit("")).alias("CT"),
-        pl.when(pl.col("JEEVES_present")).then(pl.lit("X")).otherwise(pl.lit("")).alias("JEEVES"),
-        pl.when(pl.col("STIBO_present")).then(pl.lit("X")).otherwise(pl.lit("")).alias("STIBO")
+        pl.when(pl.col(erp_present_col)).then(pl.lit("X")).otherwise(pl.lit("")).alias(erp_name),
+        pl.when(pl.col("STIBO_present")).then(pl.lit("X")).otherwise(pl.lit("")).alias("STIBO"),
     ]).with_columns([
-        # Column summarizing absent sources (in English)
         pl.concat_str([
             pl.when(pl.col("CT_present") == False).then(pl.lit("CT")).otherwise(pl.lit("")),
-            pl.when(pl.col("JEEVES_present") == False).then(pl.lit("JEEVES")).otherwise(pl.lit("")),
-            pl.when(pl.col("STIBO_present") == False).then(pl.lit("STIBO")).otherwise(pl.lit(""))
+            pl.when(pl.col(erp_present_col) == False).then(pl.lit(erp_name)).otherwise(pl.lit("")),
+            pl.when(pl.col("STIBO_present") == False).then(pl.lit("STIBO")).otherwise(pl.lit("")),
         ], separator=", ").str.strip_chars_start(", ").str.strip_chars_end(", ").alias("Absent_from")
     ]).with_columns([
-        # Replace empty strings with "-" for clarity
         pl.when(pl.col("Absent_from") == "").then(pl.lit("-")).otherwise(pl.col("Absent_from")).alias("Absent_from")
-    ]).select([
-        "ProductCode", "CT", "JEEVES", "STIBO", "Absent_from"
-    ]).sort("ProductCode")
-    
+    ]).select(["ProductCode", "CT", erp_name, "STIBO", "Absent_from"]).sort("ProductCode")
+
     return reconciliation
 
 def _find_first_file(directory: Path, needle: str) -> Path | None:
@@ -286,27 +298,30 @@ def get_file_hash(file_path: str) -> str:
     except FileNotFoundError:
         return None
 
-def _resolve_product_paths(date_folder: str) -> tuple[Path | None, Path | None, Path | None]:
-    """Resolve JEEVES, CT, STIBO Product file paths (dated folder or root). Returns (jeves_path, ct_path, stibo_path)."""
+def _resolve_product_paths(
+    date_folder: str, market: str = "Ekofisk", erp_name: str = "Jeeves"
+) -> tuple[Path | None, Path | None, Path | None]:
+    """Resolve ERP, CT, STIBO Product file paths. Returns (erp_path, ct_path, stibo_path).
+    ERP files are looked up in ERP/{erp_name}/{date}/ (fallback: ERP/{erp_name}/).
+    """
     date_folder = date_folder.strip()
-    jeves_dir = Path("JEEVES") / date_folder if (Path("JEEVES") / date_folder).is_dir() else Path("JEEVES")
+    erp_base = Path("ERP") / erp_name
+    erp_dir = erp_base / date_folder if (erp_base / date_folder).is_dir() else erp_base
     ct_dir = Path("CT") / date_folder if (Path("CT") / date_folder).is_dir() else Path("CT")
     stibo_dir = Path("STIBO") / date_folder
 
-    jeves_path = _find_first_file(jeves_dir, "Product") or _find_first_file(Path("JEEVES"), "Product")
+    erp_path = _find_first_file(erp_dir, "Product")
     ct_path = _find_first_file(ct_dir, "Product") or _find_first_file(Path("CT"), "Product")
-    stibo_path = stibo_dir / f"Products_{date_folder}.xlsx" if stibo_dir.is_dir() else None
-    if stibo_path is None or not stibo_path.exists():
-        alt = list(Path(stibo_dir).glob("Products*.xlsx")) if stibo_dir.is_dir() else []
-        stibo_path = alt[0] if alt else None
-    if stibo_path is None or not stibo_path.exists():
-        stibo_path = Path("STIBO/extract_stibo_all_products.xlsx") if Path("STIBO/extract_stibo_all_products.xlsx").exists() else None
-    return jeves_path, ct_path, stibo_path
+    stibo_path = _find_first_file(stibo_dir, "Product") if stibo_dir.is_dir() else None
+    if stibo_path is None:
+        p = Path("STIBO/extract_stibo_all_products.xlsx")
+        stibo_path = p if p.exists() else None
+    return erp_path, ct_path, stibo_path
 
 
-def get_input_files_hash(date_folder: str = "2302") -> str:
-    """Calculate combined hash of all input files (JEEVES, CT, STIBO from dated folder or root)."""
-    jeves_path, ct_path, stibo_path = _resolve_product_paths(date_folder)
+def get_input_files_hash(date_folder: str = "2302", market: str = "Ekofisk", erp_name: str = "Jeeves") -> str:
+    """Calculate combined hash of all input files (ERP, CT, STIBO from dated folder or root)."""
+    jeves_path, ct_path, stibo_path = _resolve_product_paths(date_folder, market, erp_name)
     input_files = [str(p) for p in (jeves_path, ct_path, stibo_path) if p is not None and p.exists()]
     if len(input_files) < 3:
         return None
@@ -353,37 +368,45 @@ def main(
     date_folder: str = "2302",
     output_dir: Path | None = None,
     write_range_file: bool = True,
+    market: str = "Ekofisk",
 ) -> pl.DataFrame:
-    """Run Product (Range) reconciliation. Sources: JEEVES/{date}/, CT/{date}/, STIBO/{date}/.
+    """Run Product (Range) reconciliation. Sources: ERP/{market}/{date}/, CT/{date}/, STIBO/{date}/.
     Returns the Product reconciliation DataFrame.
-    If write_range_file=True, also writes Range_Reconciliation_*.xlsx to output_dir (default: current directory)."""
+    If write_range_file=True, also writes Range_Reconciliation_*.xlsx to output_dir."""
+    from market_config import get_erp_name
+    erp_name = get_erp_name(market)
+
     date_folder = date_folder.strip()
     out = output_dir if output_dir is not None else Path(".")
     out.mkdir(parents=True, exist_ok=True)
-    print("  Chargement des sources...")
+    print(f"  Chargement des sources (market={market}, ERP={erp_name})...")
 
-    jeves_path, ct_path, stibo_path = _resolve_product_paths(date_folder)
-    if jeves_path is None:
-        raise FileNotFoundError(f"JEEVES Product file not found in JEEVES/{date_folder}/ nor JEEVES/.")
+    erp_path, ct_path, stibo_path = _resolve_product_paths(date_folder, market, erp_name)
+    if erp_path is None:
+        raise FileNotFoundError(
+            f"ERP Product file not found in ERP/{market}/{date_folder}/ nor ERP/{market}/."
+        )
     if ct_path is None:
         raise FileNotFoundError(f"CT Product file not found in CT/{date_folder}/ nor CT/.")
     if stibo_path is None:
-        raise FileNotFoundError(f"STIBO Product file not found in STIBO/{date_folder}/ nor STIBO/extract_stibo_all_products.xlsx.")
+        raise FileNotFoundError(
+            f"STIBO Product file not found in STIBO/{date_folder}/ nor STIBO/extract_stibo_all_products.xlsx."
+        )
 
     print("  Lecture:")
-    jeves_df = load_jeves_data(str(jeves_path))
-    print(f"    - JEEVES:  {len(jeves_df)} produits")
+    erp_df = _load_erp_product_data(str(erp_path), erp_name)
+    print(f"    - {erp_name}: {len(erp_df)} produits")
     ct_df = load_ct_data(str(ct_path))
-    print(f"    - CT:      {len(ct_df)} produits")
+    print(f"    - CT:     {len(ct_df)} produits")
     stibo_df = load_stibo_data(str(stibo_path))
-    print(f"    - STIBO:   {len(stibo_df)} produits")
+    print(f"    - STIBO:  {len(stibo_df)} produits")
 
-    print("  Réconciliation (présence CT / JEEVES / STIBO)...")
-    range_reconciliation = create_range_reconciliation(jeves_df, ct_df, stibo_df)
+    print(f"  Réconciliation (présence CT / {erp_name} / STIBO)...")
+    range_reconciliation = create_range_reconciliation(erp_df, ct_df, stibo_df, erp_name)
     print(f"  Total produits uniques: {len(range_reconciliation)}")
 
     if write_range_file:
-        current_input_hash = get_input_files_hash(date_folder)
+        current_input_hash = get_input_files_hash(date_folder, market, erp_name)
         previous_hash_info = load_hash_info(out)
         if current_input_hash and previous_hash_info and previous_hash_info.get("input_hash") == current_input_hash:
             existing_files = find_existing_output_files(out)
@@ -401,10 +424,10 @@ def main(
         if current_input_hash:
             save_hash_info(current_input_hash, output_file_range, out)
     else:
-        print("  -> Product data prêt pour intégration dans Reconciliation_{market}.xlsx")
+        print(f"  -> Product data prêt pour intégration dans Reconciliation_{market}.xlsx")
 
     return range_reconciliation
 
 
 if __name__ == "__main__":
-    main(date_folder="2302", write_range_file=True)
+    main(date_folder="2302", market="Ekofisk", write_range_file=True)

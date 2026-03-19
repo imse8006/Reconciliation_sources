@@ -1,0 +1,16 @@
+{
+  "Brakes":                 { "erp": "SAP" },
+  "Classic_Drinks":         { "erp": "AX" },
+  "Ekofisk":                { "erp": "Jeeves", "mapping": "Mapping/Mapping_Ekofisk.xlsx" },
+  "Fresh_Direct":           { "erp": "Prophet", "mapping": "Mapping/Mapping_Fresh_Direct.xlsx" },
+  "Fruktservice":           { "erp": "ASW" },
+  "KFF":                    { "erp": "Chorus" },
+  "LAG":                    { "erp": "SAP" },
+  "Medina":                 { "erp": "AX" },
+  "Menigo":                 { "erp": "ASW" },
+  "Ready_Chef":             { "erp": "Prophet" },
+  "Servicestyckarna":       { "erp": "ASW" },
+  "Sysco_France":           { "erp": "SAP" },
+  "Sysco_Northern_Ireland": { "erp": "AX" },
+  "Sysco_ROI":              { "erp": "AX" }
+}

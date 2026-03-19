@@ -2,12 +2,16 @@
 Launch reconciliation for all three domains (Invoice, Ordering-Shipping, Product).
 Output: Reconciliation_{market}.xlsx with 5 tabs: Product, Vendor Invoice, Vendor OS, Customer Invoice, Customer OS.
 
-Sources are read from dated folders: STIBO/{date}/, CT/{date}/, JEEVES/{date}/ (e.g. 2302 = 23 Feb, 0203 = 2 Mar).
+Sources are read from dated folders:
+  STIBO/{date}/, CT/{date}/, ERP/{market}/{date}/  (e.g. 2302 = 23 Feb, 1003 = 10 Mar)
+
+Markets and ERP associations are defined in markets.json.
 
 Usage:
-  python run_reconciliation.py --market ekofisk
-  python run_reconciliation.py --market ekofisk --date 2302
-  python run_reconciliation.py --market all --date 0203
+  python run_reconciliation.py --market Ekofisk
+  python run_reconciliation.py --market Ekofisk --date 2302
+  python run_reconciliation.py --market Fresh_Direct --date 1003
+  python run_reconciliation.py --market all --date 1003
   python run_reconciliation.py --market all --domains invoice_ordering --date 2302
 """
 import argparse
@@ -15,19 +19,27 @@ from pathlib import Path
 
 import polars as pl
 
-MARKETS = ["Ekofisk", "Fresh", "Classic"]
+import market_config
+
 DEFAULT_DATE = "2302"
 
 
 def main() -> None:
+    all_markets = market_config.list_markets()
+
     parser = argparse.ArgumentParser(
-        description="Run reconciliation. Output: Reconciliation_{market}.xlsx with 5 tabs (Product, Vendor Invoice, Vendor OS, Customer Invoice, Customer OS)."
+        description=(
+            "Run reconciliation. Output: Reconciliation_{market}.xlsx with 5 tabs "
+            "(Product, Vendor Invoice, Vendor OS, Customer Invoice, Customer OS)."
+        )
     )
     parser.add_argument(
         "--market",
-        choices=["ekofisk", "fresh", "classic", "all"],
-        default="ekofisk",
-        help="Market to run: one of ekofisk, fresh, classic, or all",
+        default="Ekofisk",
+        help=(
+            f"Market name or 'all'. Known markets: {', '.join(all_markets)}. "
+            "Market names are case-sensitive."
+        ),
     )
     parser.add_argument(
         "--domains",
@@ -39,7 +51,10 @@ def main() -> None:
         "--date",
         default=DEFAULT_DATE,
         metavar="DDMM",
-        help=f"Date folder for sources: STIBO/{{date}}/, CT/{{date}}/, JEEVES/{{date}}/ (e.g. 2302, 0203). Default: {DEFAULT_DATE}",
+        help=(
+            f"Date folder for sources: STIBO/{{date}}/, CT/{{date}}/, ERP/{{market}}/{{date}}/ "
+            f"(e.g. 2302, 1003). Default: {DEFAULT_DATE}"
+        ),
     )
     args = parser.parse_args()
 
@@ -47,7 +62,18 @@ def main() -> None:
     out_dir = Path("output") / date_folder
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    product_df: pl.DataFrame | None = None
+    # Resolve market(s)
+    if args.market.lower() == "all":
+        markets_to_run = all_markets
+    else:
+        # Case-insensitive match
+        match = next((m for m in all_markets if m.lower() == args.market.lower()), None)
+        if match is None:
+            parser.error(
+                f"Unknown market '{args.market}'. Known markets: {', '.join(all_markets)}"
+            )
+        markets_to_run = [match]
+
     generated_files: list[Path] = []
     skipped: list[str] = []
 
@@ -56,55 +82,80 @@ def main() -> None:
     print("  Output: Reconciliation_{market}.xlsx (5 tabs)")
     print("  Tabs: Product | Vendor Invoice | Vendor OS | Customer Invoice | Customer OS")
     print("=" * 60)
-    print(f"  Market(s): {args.market}")
+    print(f"  Market(s): {', '.join(markets_to_run)}")
     print(f"  Domains:   {args.domains}")
-    print(f"  Date:      {date_folder} (sources: STIBO/{date_folder}/, CT/{date_folder}/, JEEVES/{date_folder}/)")
-    print(f"  Output:   {out_dir}/")
+    print(f"  Date:      {date_folder}")
+    print(f"  Output:    {out_dir}/")
     print()
 
-    if args.domains in ("product", "all"):
-        print("-" * 60)
-        print("  [1/2] DOMAIN: PRODUCT (Range Reconciliation)")
-        print("-" * 60)
-        try:
-            import reconcile_products
-            product_df = reconcile_products.main(
-                date_folder=date_folder, output_dir=out_dir, write_range_file=False
+    from reconcile_ekofisk_invoice_ordering import (
+        run_invoice_ordering_reconciliation,
+        write_reconciliation_excel_5_tabs,
+        KEY_COL,
+    )
+    import reconcile_products
+
+    for market in markets_to_run:
+        erp = market_config.get_erp_name(market)
+        print(f"{'=' * 60}")
+        print(f"  MARKET: {market}  (ERP: {erp})")
+        print(f"{'=' * 60}")
+
+        product_df: pl.DataFrame | None = None
+
+        if args.domains in ("product", "all"):
+            print("-" * 60)
+            print("  [1/2] DOMAIN: PRODUCT (Range Reconciliation)")
+            print("-" * 60)
+            try:
+                product_df = reconcile_products.main(
+                    date_folder=date_folder,
+                    output_dir=out_dir,
+                    write_range_file=False,
+                    market=market,
+                )
+                print(f"  -> Product data: {product_df.height} rows")
+            except NotImplementedError as e:
+                skipped.append(f"{market} / Product: {e}")
+                print(f"  SKIP (ERP non supporté): {e}")
+                product_df = None
+            except FileNotFoundError as e:
+                skipped.append(f"{market} / Product: {e}")
+                print(f"  SKIP (fichier manquant): {e}")
+                product_df = None
+            except Exception as e:
+                skipped.append(f"{market} / Product: {e}")
+                print(f"  SKIP (erreur): {e}")
+                product_df = None
+            print()
+
+        if args.domains == "product" and product_df is not None:
+            # Product-only run: write Reconciliation file with empty Invoice/OS tabs
+            erp = market_config.get_erp_name(market)
+            empty = pl.DataFrame({KEY_COL: pl.Series([], dtype=pl.Utf8)})
+            out_path = out_dir / f"Reconciliation_{market}.xlsx"
+            write_reconciliation_excel_5_tabs(
+                out_path, empty, empty, product_df=product_df, erp_name=erp
             )
-            print(f"  -> Product data: {product_df.height} rows (pour onglet Product dans Reconciliation_*.xlsx)")
-        except FileNotFoundError as e:
-            skipped.append(f"Product: {e}")
-            print(f"  SKIP: {e}")
-            product_df = None
-        except Exception as e:
-            skipped.append(f"Product: {e}")
-            print(f"  SKIP: {e}")
-            product_df = None
-        print()
+            print(f"  -> écrit: {out_path}")
+            generated_files.append(out_path)
 
-    # Always run invoice_ordering when we have at least one market: single output = Reconciliation_{market}.xlsx
-    if args.domains in ("invoice_ordering", "product", "all"):
-        from reconcile_ekofisk_invoice_ordering import run_invoice_ordering_reconciliation
-
-        if args.market == "all":
-            markets_to_run = MARKETS
-        else:
-            markets_to_run = [args.market.capitalize()]
-
-        print("-" * 60)
-        print("  [2/2] DOMAIN: INVOICE + ORDERING-SHIPPING")
-        print(f"         Markets: {', '.join(markets_to_run)}")
-        print("-" * 60)
-        for market in markets_to_run:
+        if args.domains in ("invoice_ordering", "all"):
+            print("-" * 60)
+            print("  [2/2] DOMAIN: INVOICE + ORDERING-SHIPPING")
+            print("-" * 60)
             try:
                 out_path = run_invoice_ordering_reconciliation(
                     market, out_dir, product_df=product_df, date_folder=date_folder
                 )
                 generated_files.append(out_path)
+            except NotImplementedError as e:
+                skipped.append(f"{market} / Invoice-OS: {e}")
+                print(f"  SKIP (ERP non supporté): {e}")
             except FileNotFoundError as e:
-                skipped.append(f"{market}: {e}")
-                print(f"  SKIP {market}: {e}")
-        print()
+                skipped.append(f"{market} / Invoice-OS: {e}")
+                print(f"  SKIP (fichier manquant): {e}")
+            print()
 
     print("=" * 60)
     print("  RÉSUMÉ")
@@ -114,7 +165,7 @@ def main() -> None:
         for p in generated_files:
             print(f"    - {p}")
     if skipped:
-        print("  Ignorés (fichier source manquant ou erreur):")
+        print("  Ignorés (fichier manquant, ERP non supporté ou erreur):")
         for s in skipped:
             print(f"    - {s}")
     if not generated_files and not skipped:
