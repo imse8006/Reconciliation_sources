@@ -15,10 +15,10 @@ CT/*.xlsb
 STIBO/*.xlsx
 Mapping/
 
-# Output files (allow output/2302/Reconciliation_*.xlsx so Streamlit can load after clone)
+# Output files — versionner tous les Reconciliation_*.xlsx pour le dashboard
 output/*
-!output/2302/
-!output/2302/Reconciliation_*.xlsx
+!output/*/
+!output/*/Reconciliation_*.xlsx
 Analyse*.xlsx
 
 # Fichiers de configuration système
