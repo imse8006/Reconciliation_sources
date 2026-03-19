@@ -31,9 +31,22 @@ def _format_version(v: str) -> str:
 
 @st.cache_data
 def list_output_versions() -> list[str]:
+    """All version folders in output/, newest first."""
     if not OUTPUT_DIR.exists():
         return []
     return sorted([d.name for d in OUTPUT_DIR.iterdir() if d.is_dir()], reverse=True)
+
+
+@st.cache_data
+def _versions_for_market(market: str) -> list[str]:
+    """Only versions that have a Reconciliation_{market}.xlsx file, newest first."""
+    if not OUTPUT_DIR.exists():
+        return []
+    return sorted(
+        [d.name for d in OUTPUT_DIR.iterdir()
+         if d.is_dir() and (d / f"Reconciliation_{market}.xlsx").exists()],
+        reverse=True,
+    )
 
 
 def _available_markets() -> list[str]:
@@ -502,19 +515,20 @@ def main():
                           index=0, key="domain_selector", label_visibility="collapsed")
 
         st.markdown("---")
-        versions = list_output_versions()
-        if domain != "Historique" and versions:
+        market_versions = _versions_for_market(market)
+        if domain != "Historique" and market_versions:
             st.markdown("### Version")
             version = st.selectbox(
                 "Version",
-                versions,
+                market_versions,
                 format_func=_format_version,
                 index=0,
                 key="version_selector",
                 label_visibility="collapsed",
             )
         else:
-            version = versions[0] if versions else "latest"
+            market_versions = list_output_versions()
+            version = market_versions[0] if market_versions else "latest"
 
     if domain == "Historique":
         show_history(market)
