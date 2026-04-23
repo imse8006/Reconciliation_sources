@@ -306,6 +306,9 @@ def _resolve_product_paths(
     """
     date_folder = date_folder.strip()
     erp_base = Path("ERP") / erp_name
+    # Backward-compatible: for Jeeves, support legacy layout JEEVES/{date}/ when ERP/ is not used.
+    if erp_name.lower() == "jeeves" and not erp_base.exists():
+        erp_base = Path("JEEVES")
     erp_dir = erp_base / date_folder if (erp_base / date_folder).is_dir() else erp_base
     ct_dir = Path("CT") / date_folder if (Path("CT") / date_folder).is_dir() else Path("CT")
     stibo_dir = Path("STIBO") / date_folder
@@ -384,7 +387,8 @@ def main(
     erp_path, ct_path, stibo_path = _resolve_product_paths(date_folder, market, erp_name)
     if erp_path is None:
         raise FileNotFoundError(
-            f"ERP Product file not found in ERP/{market}/{date_folder}/ nor ERP/{market}/."
+            f"ERP Product file not found in ERP/{erp_name}/{date_folder}/ nor ERP/{erp_name}/ "
+            f"(or legacy JEEVES/{date_folder}/)."
         )
     if ct_path is None:
         raise FileNotFoundError(f"CT Product file not found in CT/{date_folder}/ nor CT/.")

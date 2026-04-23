@@ -12,6 +12,7 @@ from openpyxl import load_workbook, Workbook
 STIBO_DIR = Path("STIBO")
 CT_DIR = Path("CT")
 ERP_DIR = Path("ERP")
+JEEVES_DIR = Path("JEEVES")
 
 # File patterns
 CT_VENDOR_NEEDLE = "Vendor"
@@ -462,6 +463,9 @@ def run_invoice_ordering_reconciliation(
     stibo_date_dir = STIBO_DIR / date_folder
     ct_search_dir = CT_DIR / date_folder if (CT_DIR / date_folder).is_dir() else CT_DIR
     erp_base = ERP_DIR / erp_name
+    # Backward-compatible: for Jeeves, support legacy layout JEEVES/{date}/ when ERP/ is not used.
+    if erp_name.lower() == "jeeves" and not erp_base.exists():
+        erp_base = JEEVES_DIR
     erp_search_dir = erp_base / date_folder if (erp_base / date_folder).is_dir() else erp_base
 
     # STIBO: files in STIBO/{date}/ e.g. Invoice_Vendors_2302.xlsx
