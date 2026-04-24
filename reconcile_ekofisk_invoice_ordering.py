@@ -167,10 +167,15 @@ def load_stibo_os_customers(path: Path) -> pl.DataFrame:
         return str(s).strip().lower().replace(" ", "")
 
     col_idx = None
-    # More tolerant: just look for 'customercode' + 'ordering' in normalized header
+    # More tolerant: accept headers like "Ordering Cust" as well
     for i, h in enumerate(headers):
         nh = norm(h)
-        if ("customercode" in nh and "ordering" in nh) or ("ordering/shipping" in nh and "customer" in nh):
+        if (
+            ("customercode" in nh and "ordering" in nh)
+            or ("ordering/shipping" in nh and "customer" in nh)
+            or (("ordering" in nh) and ("cust" in nh))
+            or nh in ("orderingcust", "orderingcust.", "orderingcustcode")
+        ):
             col_idx = i + 1
             break
     if col_idx is None:
