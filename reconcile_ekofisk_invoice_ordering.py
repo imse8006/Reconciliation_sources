@@ -167,14 +167,14 @@ def load_stibo_os_customers(path: Path) -> pl.DataFrame:
         return str(s).strip().lower().replace(" ", "")
 
     col_idx = None
-    # More tolerant: accept headers like "Ordering Cust" as well
+    # More tolerant: accept headers like "Ordering Customer Code" / "Ordering Cust" as well
     for i, h in enumerate(headers):
         nh = norm(h)
         if (
             ("customercode" in nh and "ordering" in nh)
             or ("ordering/shipping" in nh and "customer" in nh)
             or (("ordering" in nh) and ("cust" in nh))
-            or nh in ("orderingcust", "orderingcust.", "orderingcustcode")
+            or nh in ("orderingcust", "orderingcust.", "orderingcustcode", "orderingcustomercode")
         ):
             col_idx = i + 1
             break
