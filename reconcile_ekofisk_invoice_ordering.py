@@ -151,6 +151,42 @@ def load_stibo_os_vendors(path: Path) -> pl.DataFrame:
     return pl.DataFrame({KEY_COL: values})
 
 
+def load_stibo_os_customers(path: Path) -> pl.DataFrame:
+    """Load STIBO Customer OS codes from file (e.g. OS_Customers_2304.xlsx).
+
+    Expected a column like 'Customer Code Ordering / Shipping' (or similar) on row 1.
+    Keeps leading zeros by reading values as-is (strings) and later normalizing via _normalize_os_codes.
+    """
+    wb = load_workbook(path, data_only=True)
+    ws = wb.active
+    headers = [ws.cell(row=1, column=c).value for c in range(1, ws.max_column + 1)]
+
+    def norm(s: str | None) -> str:
+        if s is None:
+            return ""
+        return str(s).strip().lower().replace(" ", "")
+
+    col_idx = None
+    # More tolerant: just look for 'customercode' + 'ordering' in normalized header
+    for i, h in enumerate(headers):
+        nh = norm(h)
+        if ("customercode" in nh and "ordering" in nh) or ("ordering/shipping" in nh and "customer" in nh):
+            col_idx = i + 1
+            break
+    if col_idx is None:
+        # Fallback: assume first column contains the codes (as in your extract screenshot)
+        col_idx = 1
+
+    values = []
+    for row in range(2, ws.max_row + 1):
+        v = ws.cell(row=row, column=col_idx).value
+        if v is None or (isinstance(v, str) and not v.strip()):
+            continue
+        values.append(v)
+    wb.close()
+    return pl.DataFrame({KEY_COL: values})
+
+
 def load_stibo_customer_invoice(path: Path) -> pl.DataFrame:
     """Load STIBO Customer Invoice codes from file (e.g. Invoice_Customer_2302.xlsx), column 'Invoice Customer Code' (Q)."""
     wb = load_workbook(path, data_only=True)
@@ -508,8 +544,7 @@ def run_invoice_ordering_reconciliation(
             f"STIBO Customer Invoice: not found {stibo_inv_customers[0]} nor {customer_extract}."
         )
     if stibo_os_customers.exists():
-        # TODO: add loader when column/sheet known
-        stibo_customer_ord = _normalize(pl.DataFrame({KEY_COL: []}))
+        stibo_customer_ord = _normalize(load_stibo_os_customers(stibo_os_customers))
     elif customer_extract.exists():
         stibo_customer_ord = _normalize(load_stibo_extract_column(customer_extract, "Ordering-Shipping"))
     else:
